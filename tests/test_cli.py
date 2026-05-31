@@ -272,3 +272,190 @@ def test_status_shows_hint_when_needs_rebase(tmp_path):
         result = runner.invoke(cli, ["status"])
     assert result.exit_code == 0
     assert "arc sync" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Task 10: arc sync
+# ---------------------------------------------------------------------------
+
+def test_sync_dry_run_prints_plan(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.fetch"), \
+         patch("arc.git.rebase") as mock_rebase, \
+         patch("arc.github.get_pr", return_value=None):
+        result = runner.invoke(cli, ["sync", "-n"])
+    assert result.exit_code == 0
+    mock_rebase.assert_not_called()
+    assert "[dry-run]" in result.output
+
+
+def test_sync_cascades_rebase(tmp_path):
+    _write_state_with_branches(tmp_path)
+    rebase_calls = []
+
+    def fake_rebase(onto):
+        rebase_calls.append(onto)
+        r = MagicMock()
+        r.returncode = 0
+        return r
+
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.fetch"), \
+         patch("arc.git.rebase", side_effect=fake_rebase), \
+         patch("arc.git.checkout"), \
+         patch("arc.git.get_sha", return_value="abc"), \
+         patch("arc.github.get_pr", return_value=None):
+        result = runner.invoke(cli, ["sync"])
+    assert result.exit_code == 0
+    assert rebase_calls == ["main", "feat/auth"]
+
+
+def test_sync_exits_3_on_conflict(tmp_path):
+    _write_state_with_branches(tmp_path)
+    conflict_result = MagicMock()
+    conflict_result.returncode = 1
+
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.fetch"), \
+         patch("arc.git.rebase", return_value=conflict_result), \
+         patch("arc.git.checkout"), \
+         patch("arc.git.rebase_abort"), \
+         patch("arc.git.get_sha", return_value="abc"), \
+         patch("arc.git.conflicted_files", return_value=["src/auth.py"]), \
+         patch("arc.github.get_pr", return_value=None):
+        result = runner.invoke(cli, ["sync"])
+    assert result.exit_code == 3
+
+
+# ---------------------------------------------------------------------------
+# Task 11: arc push
+# ---------------------------------------------------------------------------
+
+def test_push_force_pushes_all_branches(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.force_push") as mock_push:
+        result = runner.invoke(cli, ["push"])
+    assert result.exit_code == 0
+    mock_push.assert_called_once_with(["feat/auth", "feat/api"])
+
+
+def test_push_dry_run(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.force_push") as mock_push, \
+         patch("arc.git.get_sha", return_value="abc123"):
+        result = runner.invoke(cli, ["push", "-n"])
+    assert result.exit_code == 0
+    mock_push.assert_not_called()
+    assert "[dry-run]" in result.output
+
+
+def test_push_increments_revision(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.force_push"):
+        runner.invoke(cli, ["push"])
+    data = _json.loads((tmp_path / ".arc" / "state.json").read_text())
+    assert data["branches"][0]["revision"] == 2  # was 1
+    assert data["branches"][1]["revision"] == 1  # was 0
+
+
+# ---------------------------------------------------------------------------
+# Task 12: arc submit
+# ---------------------------------------------------------------------------
+
+import subprocess as _subprocess
+
+
+def _write_state_no_prs(tmp_path):
+    return _write_state(
+        tmp_path, prefix="feat",
+        branches=[
+            {"name": "feat/auth", "pr_number": None, "revision": 1},
+            {"name": "feat/api",  "pr_number": None, "revision": 1},
+        ]
+    )
+
+
+def test_submit_creates_prs(tmp_path):
+    _write_state_no_prs(tmp_path)
+    created = []
+
+    def fake_create(branch, base, title, body, draft):
+        n = len(created) + 50
+        created.append(branch)
+        return {"number": n, "url": f"https://gh/{n}"}
+
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.get_commit_subject", return_value="Add feature"), \
+         patch("arc.git.get_commit_body", return_value=""), \
+         patch("arc.git.commit_count", return_value=1), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.github.create_pr", side_effect=fake_create):
+        result = runner.invoke(cli, ["submit", "--draft"])
+    assert result.exit_code == 0
+    assert created == ["feat/auth", "feat/api"]
+    data = _json.loads((tmp_path / ".arc" / "state.json").read_text())
+    assert data["branches"][0]["pr_number"] == 50
+
+
+def test_submit_updates_existing_prs(tmp_path):
+    _write_state_with_branches(tmp_path)
+    updated = []
+
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.get_commit_subject", return_value="feat"), \
+         patch("arc.git.get_commit_body", return_value=""), \
+         patch("arc.git.commit_count", return_value=1), \
+         patch("arc.github.get_pr", return_value={"number": 42, "url": "https://gh/42", "state": "OPEN"}), \
+         patch("arc.github.update_pr_body", side_effect=lambda n, b: updated.append(n)):
+        result = runner.invoke(cli, ["submit"])
+    assert result.exit_code == 0
+    assert 42 in updated
+
+
+def test_submit_runs_hooks_and_fails(tmp_path):
+    _write_state_no_prs(tmp_path)
+    cfg = {"hooks": {"pre-submit": ["exit 1"]}}
+    (tmp_path / ".arc" / "config.json").write_text(_json.dumps(cfg))
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path):
+        result = runner.invoke(cli, ["submit"])
+    assert result.exit_code == 7
+
+
+def test_submit_skip_hooks(tmp_path):
+    _write_state_no_prs(tmp_path)
+    cfg = {"hooks": {"pre-submit": ["exit 1"]}}
+    (tmp_path / ".arc" / "config.json").write_text(_json.dumps(cfg))
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.get_commit_subject", return_value="feat"), \
+         patch("arc.git.get_commit_body", return_value=""), \
+         patch("arc.git.commit_count", return_value=1), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.github.create_pr", return_value={"number": 1, "url": "https://gh/1"}):
+        result = runner.invoke(cli, ["submit", "--skip-hooks"])
+    assert result.exit_code == 0
+
+
+def test_submit_dry_run(tmp_path):
+    _write_state_no_prs(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.github.create_pr") as mock_create:
+        result = runner.invoke(cli, ["submit", "-n"])
+    assert result.exit_code == 0
+    mock_create.assert_not_called()
+    assert "[dry-run]" in result.output

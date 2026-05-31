@@ -1,5 +1,6 @@
 from __future__ import annotations
 import json as _json
+import subprocess as _subprocess
 import sys
 import click
 from rich.console import Console
@@ -179,3 +180,156 @@ def _render_status_tree(status: dict) -> None:
         label = f"{b['name']}{current_str}  {pr_str}  {b['commits']} commits{rev_str}{rebase_str}"
         node = node.add(label)
     out.print(tree)
+
+
+@cli.command("sync")
+@click.option("-n", "--dry-run", is_flag=True)
+@click.option("-q", "--quiet", is_flag=True)
+@click.option("--json", "output_json", is_flag=True)
+def sync_cmd(dry_run, quiet, output_json):
+    """Fetch and cascade-rebase the stack."""
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    if not st.branch_names(data):
+        err.print("Stack is empty. Run 'arc new <branch>' to add a branch.")
+        return
+
+    if not quiet:
+        err.print("Fetching...", end=" ")
+    if not dry_run:
+        git.fetch()
+    if not quiet:
+        err.print("done.")
+
+    plan = ops.rebase_plan(data)
+    pre_shas = {}
+    if not dry_run:
+        pre_shas = {b["name"]: git.get_sha(b["name"]) for b in data["branches"]}
+
+    for step in plan:
+        branch, onto = step["branch"], step["onto"]
+        if dry_run:
+            err.print(f"\\[dry-run] rebase {branch} onto {onto}")
+            continue
+        if not quiet:
+            err.print(f"Rebasing {branch} onto {onto}...")
+        git.checkout(branch)
+        result = git.rebase(onto)
+        if result.returncode != 0:
+            git.rebase_abort()
+            for name, sha in pre_shas.items():
+                try:
+                    git.checkout(name)
+                    git._run(["git", "reset", "--hard", sha])
+                except Exception:
+                    pass
+            files = git.conflicted_files()
+            err.print(f"Conflict in {branch}. Resolve: {', '.join(files) or 'see git status'}")
+            err.print("Then run 'arc rebase --continue' or 'arc rebase --abort'.")
+            sys.exit(3)
+
+    if not dry_run and not quiet:
+        err.print("Stack synced. Run 'arc push' to push to remote.")
+
+
+@cli.command("push")
+@click.option("-n", "--dry-run", is_flag=True)
+@click.option("-q", "--quiet", is_flag=True)
+@click.option("--json", "output_json", is_flag=True)
+def push_cmd(dry_run, quiet, output_json):
+    """Force-push all stack branches to remote."""
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    names = st.branch_names(data)
+    if not names:
+        err.print("Stack is empty.")
+        return
+    if dry_run:
+        for name in names:
+            sha = git.get_sha(name)
+            err.print(f"\\[dry-run] push {name} ({sha[:8]})")
+        return
+    git.force_push(names)
+    for name in names:
+        current_rev = st.get_branch(data, name)["revision"]
+        data = st.update_branch(data, name, revision=current_rev + 1)
+    st.save(root, data)
+    if not quiet:
+        err.print(f"Pushed {len(names)} branches. Run 'arc submit' to create pull requests.")
+
+
+def _run_hooks(root, hooks: list[str]) -> None:
+    for cmd in hooks:
+        result = _subprocess.run(cmd, shell=True, cwd=root)
+        if result.returncode != 0:
+            err.print(f"Pre-submit hook failed: {cmd!r} (exit {result.returncode}).")
+            err.print("Fix the failure or use --skip-hooks.")
+            sys.exit(7)
+
+
+@cli.command("submit")
+@click.option("--draft", is_flag=True, default=True)
+@click.option("--open", "mark_open", is_flag=True, default=False)
+@click.option("--skip-hooks", is_flag=True)
+@click.option("-n", "--dry-run", is_flag=True)
+@click.option("-q", "--quiet", is_flag=True)
+@click.option("--json", "output_json", is_flag=True)
+def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
+    """Create or update pull requests for the stack."""
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    branches = data["branches"]
+    if not branches:
+        err.print("Stack is empty.")
+        return
+
+    cfg = st.load_config(root)
+    hooks = cfg.get("hooks", {}).get("pre-submit", [])
+    if hooks and not skip_hooks and not dry_run:
+        _run_hooks(root, hooks)
+    elif hooks and skip_hooks and not quiet:
+        err.print("Warning: pre-submit hooks skipped.")
+
+    use_draft = draft and not mark_open
+    created, updated = [], []
+
+    for i, b in enumerate(branches):
+        name = b["name"]
+        base = data["base"] if i == 0 else branches[i - 1]["name"]
+
+        if dry_run:
+            existing = github.get_pr(name)
+            action = "create" if not existing else "update"
+            err.print(f"\\[dry-run] {action} PR for {name} (base: {base})")
+            continue
+
+        subject = git.get_commit_subject(name)
+        body_text = git.get_commit_body(name)
+        count = git.commit_count(base, name)
+        title = ops.build_pr_title(subject if count == 1 else "", name)
+        entries = [
+            {"name": x["name"], "pr_number": x["pr_number"], "is_current": x["name"] == name}
+            for x in branches
+        ]
+        body = ops.build_pr_body(body_text, entries, data["base"])
+
+        existing = github.get_pr(name)
+        if not existing:
+            pr = github.create_pr(name, base, title, body, draft=use_draft)
+            data = st.update_branch(data, name, pr_number=pr["number"])
+            created.append({"branch": name, "pr_number": pr["number"], "pr_url": pr["url"]})
+        else:
+            pr_number = b["pr_number"] or existing["number"]
+            github.update_pr_body(pr_number, body)
+            if mark_open:
+                github.mark_pr_ready(pr_number)
+            updated.append({"branch": name, "pr_number": pr_number,
+                            "pr_url": existing.get("url"), "revision": b["revision"]})
+
+    if not dry_run:
+        st.save(root, data)
+
+    if output_json and not dry_run:
+        out.print_json(_json.dumps({"created": created, "updated": updated}))
+    elif not quiet and not dry_run:
+        err.print("PRs ready. View your stack with 'arc status'.")
