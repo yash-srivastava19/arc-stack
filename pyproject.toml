@@ -1,6 +1,6 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "arc-stack"
@@ -15,9 +15,8 @@ dependencies = [
 [project.scripts]
 arc = "arc.cli:cli"
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = ["pytest>=7.4", "pytest-cov"]
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["arc*"]
+[tool.hatch.build.targets.wheel]
+packages = ["arc"]
