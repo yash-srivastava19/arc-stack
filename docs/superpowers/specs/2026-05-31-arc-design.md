@@ -19,13 +19,15 @@ Large PRs are expensive to review. Splitting them into stacked PRs is the right 
 
 **Unix first.** Every command does one thing. Output goes to stdout, status messages go to stderr. `--json` on any command makes it machine-readable — explicit, not inferred. No TTY detection magic.
 
-**Functional core, imperative shell.** The domain logic is pure functions (compute what needs to happen). Side effects (git, GitHub API) live only at the edges. These are separate braids that do not touch each other.
+**Functional core, imperative shell.** The domain logic is pure functions that compute what needs to happen. Side effects (git, GitHub API) live only at the edges. These are separate braids that do not touch each other.
 
-**No complecting.** Human output and machine output are separate flags, not environment-inferred behavior. State is data, not behavior. Each module has one job and does not reach into another's domain.
+**Simple Made Easy.** Simple = each module has one role and does not reach into another's domain. Easy = the common path is one command. Don't complect concerns — separate modify from navigate, push from submit, human output from machine output. State is data, not behavior.
 
-**Fire and forget.** The common path is one command: `arc sync`. For the full loop: `arc sync && arc push && arc submit`. Users stay in control but are not burdened by mechanics.
+**Fire and forget.** The common path is `arc sync && arc push && arc submit`. Users stay in control but are not burdened by mechanics.
 
 **Agent-friendly by design.** Every command has `--json`. Exit codes are meaningful and documented. The skill document lives in the repo alongside the code and is updated in the same commit when the CLI changes.
+
+**Adaptable by design.** New commands are additive. The state schema is versioned. `ops.py` is the stable interface — both the CLI and any future TUI consume it directly. Adding a feature means adding a pure function to `ops.py` and wiring it up in `cli.py`, nothing more.
 
 ---
 
@@ -48,14 +50,18 @@ arc/
 ### Dependency rule
 
 ```
-cli.py → ops.py, state.py, git.py, github.py
-ops.py → state.py only (no git, no github — pure)
+cli.py  → ops.py, state.py, git.py, github.py
+ops.py  → state.py only (no git, no github — pure)
 state.py → nothing (pure data)
-git.py → nothing (thin shell)
+git.py  → nothing (thin shell)
 github.py → nothing (thin shell)
 ```
 
 `ops.py` never calls `git.py` or `github.py`. It computes plans; `cli.py` executes them. This makes `ops.py` trivially testable without mocks and makes the execution layer swappable.
+
+### Extension point: TUI
+
+A future TUI does not go through `cli.py`. It imports `ops.py` directly for pure computations and calls `git.py` / `github.py` for side effects. `cli.py` is only the terminal text interface — it is not the API. `ops.py` is the API. Keep `ops.py` functions small, well-named, and return-value-driven so they are easy to call from both surfaces.
 
 ---
 
@@ -69,30 +75,100 @@ State lives at `.arc/state.json` in the repo root. It is git-ignored — it is p
   "base": "main",
   "prefix": "feat",
   "branches": [
-    { "name": "feat/auth",       "pr": 42   },
-    { "name": "feat/api",        "pr": 43   },
-    { "name": "feat/ui",         "pr": null }
+    { "name": "feat/auth", "pr_number": 42   },
+    { "name": "feat/api",  "pr_number": 43   },
+    { "name": "feat/ui",   "pr_number": null  }
+  ],
+  "metadata": {}
+}
+```
+
+- `version`: schema version, incremented on breaking changes. Readers must reject unknown versions.
+- `base`: the trunk branch all stacks root from.
+- `prefix`: optional, applied automatically on `arc new`.
+- `branches`: ordered array, index 0 = bottom (closest to trunk). Each entry has `name` (full branch name) and `pr_number` (integer or null).
+- `metadata`: reserved for future extensibility. Always present, initially empty. New features write here without breaking the existing schema.
+
+`state.py` owns all reads and writes. No other module touches this file directly. Reads always validate `version` and fail fast if unrecognized.
+
+---
+
+## JSON output standard
+
+All `--json` output uses **snake_case** keys. Null fields are always present (never omitted). Arrays are always arrays (never null when empty). Exit codes signal errors — JSON output is always valid when exit code is 0.
+
+`arc status --json` schema:
+
+```json
+{
+  "base": "main",
+  "prefix": "feat",
+  "current_branch": "feat/api",
+  "branches": [
+    {
+      "name": "feat/auth",
+      "index": 1,
+      "pr_number": 42,
+      "pr_url": "https://github.com/owner/repo/pull/42",
+      "pr_state": "OPEN",
+      "commits": 2,
+      "needs_rebase": false,
+      "is_current": false,
+      "is_merged": false
+    },
+    {
+      "name": "feat/api",
+      "index": 2,
+      "pr_number": 43,
+      "pr_url": "https://github.com/owner/repo/pull/43",
+      "pr_state": "OPEN",
+      "commits": 3,
+      "needs_rebase": true,
+      "is_current": true,
+      "is_merged": false
+    },
+    {
+      "name": "feat/ui",
+      "index": 3,
+      "pr_number": null,
+      "pr_url": null,
+      "pr_state": null,
+      "commits": 1,
+      "needs_rebase": false,
+      "is_current": false,
+      "is_merged": false
+    }
   ]
 }
 ```
 
-- `base`: the trunk branch all stacks root from
-- `prefix`: optional, applied automatically on `arc new`
-- `branches`: ordered array, index 0 = bottom (closest to trunk)
-- `pr`: GitHub PR number, null until `arc submit` has run for that branch
-
-`state.py` owns all reads and writes. No other module touches this file directly.
+Every `--json` command follows this contract: snake_case, nulls explicit, no empty fields omitted.
 
 ---
 
 ## Commands
+
+### Onboarding
+
+```
+arc setup
+```
+
+One-time environment check. Run this before anything else on a new machine. It:
+1. Verifies `git` is installed
+2. Verifies `gh` is installed
+3. Checks `gh auth status` — tells the user to run `gh auth login` if not authenticated
+4. Configures `git rerere.enabled true` globally (remembers conflict resolutions across rebases)
+5. Prints what to do next: `cd` into a repo and run `arc init`
+
+Non-destructive. Safe to re-run. Exits non-zero if any check fails so it can be scripted.
 
 ### Core loop
 
 ```
 arc init [--base <branch>] [--prefix <prefix>]
 ```
-Detects trunk (repo default branch) if `--base` is omitted. Creates `.arc/state.json`. Adds `.arc/` to `.gitignore` (creates the file if absent). Idempotent — safe to run again.
+Detects trunk (repo default branch) if `--base` is omitted. Creates `.arc/state.json`. Adds `.arc/` to `.gitignore` (creates the file if absent). Idempotent — safe to run again. Runs the same preflight checks as `arc setup` and fails fast with a clear message if deps are missing.
 
 ```
 arc new <branch>
@@ -102,41 +178,29 @@ Creates a new git branch from current HEAD. Applies prefix if set. Appends to st
 ```
 arc add <branch>
 ```
-Adopts an existing branch into the stack. The branch must already exist. Appends to state without creating or checking out anything.
+Adopts an existing branch into the stack. The branch must already exist locally. Appends to state without creating or checking out anything. Errors if the branch is already in the stack.
 
 ```
 arc status [--json]
 ```
-The local representation layer. Default: rich tree to stdout showing branch names, PR numbers, commit count, and sync status. `--json`: structured data for agents and scripts.
+The local representation layer. Default: rich tree to stdout.
 
 Human output:
 ```
 arc  (base: main)
-─────────────────────────────────────────
+─────────────────────────────────────────────────────
   main
-  └── feat/auth        PR #42  ✓  2 commits
-      └── feat/api     PR #43  ✗  3 commits  (needs rebase)
-          └── feat/ui  no PR   ✓  1 commit
+  └── feat/auth       PR #42  ✓  2 commits
+      └── feat/api    PR #43  ✗  3 commits  (needs rebase)
+          └── feat/ui  no PR  ✓  1 commit
 ```
 
-JSON output:
-```json
-{
-  "base": "main",
-  "prefix": "feat",
-  "current": "feat/api",
-  "branches": [
-    { "name": "feat/auth", "pr": 42,   "commits": 2, "needsRebase": false },
-    { "name": "feat/api",  "pr": 43,   "commits": 3, "needsRebase": true  },
-    { "name": "feat/ui",   "pr": null, "commits": 1, "needsRebase": false }
-  ]
-}
-```
+`--json`: full schema defined in the JSON output standard section above.
 
 ```
 arc sync
 ```
-The primary command. Fetches latest from remote, then cascades rebase bottom-up through the stack. On conflict: aborts the in-progress rebase and resets every branch to the SHA it held before `sync` ran, exits code 3, prints conflicted file paths to stderr. The user resolves conflicts manually then uses `arc rebase --continue` / `arc rebase --abort`.
+The primary command. Fetches latest from remote, then cascades rebase bottom-up through the stack. On conflict: aborts the in-progress rebase, resets every branch to the SHA it held before `sync` ran, exits code 3, and prints conflicted file paths to stderr. The user resolves conflicts manually then uses `arc rebase --continue` / `arc rebase --abort`.
 
 ```
 arc push
@@ -146,14 +210,14 @@ Force-pushes all branches in stack order (`--force-with-lease --atomic`). Does n
 ```
 arc submit [--draft] [--open] [--json]
 ```
-Creates or updates PRs via `gh pr create` / `gh pr edit`. Each PR targets the branch below it in the stack; the bottom branch targets `base`. Stores PR numbers in state. `--draft` creates draft PRs (default). `--open` marks new and existing PRs as ready for review.
+Creates or updates PRs via `gh pr create` / `gh pr edit`. Each PR targets the branch below it in the stack; the bottom branch targets `base`. Default: creates draft PRs. `--open` marks new and existing PRs as ready for review. Stores PR numbers back into state. `--json` outputs the list of PRs created or updated.
 
 ### Modify
 
 ```
 arc drop <branch> [--json]
 ```
-Removes a branch from the stack. Cascades rebase for all branches above it. Does not delete the git branch — that is the user's choice.
+Removes a branch from the stack state. Cascades rebase for all branches above it. Does not delete the git branch — that is the user's choice.
 
 ```
 arc rebase [--upstack | --downstack] [--continue | --abort] [--json]
@@ -170,7 +234,7 @@ arc top                      # jump to topmost branch
 arc bottom                   # jump to bottommost non-merged branch
 ```
 
-Navigation is thin wrappers around `git checkout`. Merged branches are skipped when navigating from active branches.
+Navigation is thin wrappers around `git checkout`. Merged branches are skipped when navigating from active branches. Navigation commands do not output data; they emit a one-line confirmation to stderr and exit 0.
 
 ---
 
@@ -178,10 +242,10 @@ Navigation is thin wrappers around `git checkout`. Merged branches are skipped w
 
 | Stream | Content |
 |--------|---------|
-| stdout | Data: human-readable tree by default, JSON with `--json` |
+| stdout | Data: human-readable by default, JSON with `--json` |
 | stderr | Status messages: progress, warnings, errors |
 
-Every command that produces data supports `--json`. Commands that are purely imperative (e.g. `arc push`) emit only stderr status and exit code.
+Commands that are purely imperative (`arc push`, navigation) emit only stderr status and exit code — no stdout. This makes them safe to pipe without unexpected output.
 
 ---
 
@@ -195,22 +259,26 @@ Every command that produces data supports `--json`. Commands that are purely imp
 | 3 | Rebase conflict | Resolve files, `arc rebase --continue` or `arc rebase --abort` |
 | 4 | GitHub API failure | Check `gh auth status`, retry |
 | 5 | Invalid arguments | Fix invocation |
+| 6 | Setup check failed | Run `arc setup` and follow instructions |
 
 ---
 
 ## The full loop
 
 ```bash
-# First time: initialize the stack
+# New machine: verify dependencies and configure git
+arc setup
+
+# In your repo: initialize the stack
 arc init --base main --prefix feat
 
 # Create branches as you work
 arc new auth
-# ... write code, git commit ...
+# ... git add, git commit ...
 arc new api
-# ... write code, git commit ...
+# ... git add, git commit ...
 arc new ui
-# ... write code, git commit ...
+# ... git add, git commit ...
 
 # Check your stack
 arc status
@@ -224,9 +292,8 @@ arc push && arc submit --draft
 # Respond to review feedback on a lower branch
 arc checkout feat/auth
 # ... amend commit ...
-arc sync          # cascades rebase through api and ui
-arc push
-arc submit        # updates PR descriptions/bases
+arc sync          # cascades rebase through api and ui automatically
+arc push && arc submit
 
 # Full one-liner once you know your way around
 arc sync && arc push && arc submit --open
@@ -237,6 +304,7 @@ arc sync && arc push && arc submit --open
 ## Agent usage
 
 Agents should:
+- Run `arc setup` on a new environment before any other command
 - Always use `--json` for parsing output
 - Use exit codes for flow control, not stdout parsing
 - Run `arc status --json` to understand stack state before any operation
@@ -244,6 +312,20 @@ Agents should:
 - Never run commands that require interaction — all `arc` commands are non-interactive by design
 
 The full agent skill is in `skills/arc.md` and is the authoritative reference for agent usage.
+
+---
+
+## Adding new features
+
+The extension pattern is always the same:
+
+1. Add a pure function to `ops.py` that computes what needs to happen given the current state
+2. Add thin wrappers to `git.py` or `github.py` if new side effects are needed
+3. Add a command to `cli.py` that reads state → calls ops → calls git/github → writes state
+4. Add `--json` output to the command following the snake_case contract
+5. Update `skills/arc.md` in the same commit
+
+No existing module needs to change for a new command. The dependency rule ensures nothing is coupled that shouldn't be.
 
 ---
 
@@ -265,5 +347,5 @@ No GitHub API token management. Auth is delegated to `gh auth`.
 
 - Not a SaaS tool. No accounts, no dashboards, no telemetry.
 - Not a wrapper around `gh stack`. We call `gh` for auth and PR operations only.
-- Not a TUI (yet). `arc status` is the representation layer for V1. A `textual`-based TUI is a natural V2 that reads `arc status --json`.
+- Not a TUI (yet). `arc status` is the representation layer for V1. A `textual`-based TUI is a natural V2 that imports `ops.py` directly — no CLI layer needed.
 - Not responsible for commit authoring. `git add` and `git commit` are yours. `arc` manages the stack, not your commits.
