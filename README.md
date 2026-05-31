@@ -24,9 +24,9 @@ One command keeps the whole stack current. Another opens all the PRs — with a 
 ## Install
 
 ```bash
-pipx install arc-stack
+pipx install arc-prs
 # or
-uv tool install arc-stack
+uv tool install arc-prs
 ```
 
 **Requires:** Python 3.11+, [git](https://git-scm.com), [gh CLI](https://cli.github.com) (authenticated via `gh auth login`)
