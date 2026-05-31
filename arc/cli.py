@@ -333,3 +333,291 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
         out.print_json(_json.dumps({"created": created, "updated": updated}))
     elif not quiet and not dry_run:
         err.print("PRs ready. View your stack with 'arc status'.")
+
+
+# ---------------------------------------------------------------------------
+# Task 13: arc land
+# ---------------------------------------------------------------------------
+
+@cli.command("land")
+@click.argument("branch", required=False)
+@click.option("-f", "--force", is_flag=True)
+@click.option("-n", "--dry-run", is_flag=True)
+@click.option("--keep-branch", is_flag=True)
+@click.option("-q", "--quiet", is_flag=True)
+@click.option("--json", "output_json", is_flag=True)
+def land_cmd(branch, force, dry_run, keep_branch, quiet, output_json):
+    """Land a merged PR and restack branches above it."""
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    names = st.branch_names(data)
+    if not names:
+        err.print("Stack is empty.")
+        sys.exit(1)
+
+    target = branch or names[0]
+    if target not in names:
+        err.print(f"Branch {target!r} is not in the stack.")
+        sys.exit(5)
+
+    b = st.get_branch(data, target)
+    if not b["pr_number"]:
+        err.print(f"Branch {target!r} has no PR. Run 'arc submit' first.")
+        sys.exit(1)
+
+    if not github.pr_is_merged(b["pr_number"]):
+        err.print(f"PR #{b['pr_number']} ({target}) is not merged yet.")
+        sys.exit(1)
+
+    parent = ops.parent_branch(data, target)
+    above = ops.upstack_branches(data, target)
+    merge_sha = github.get_merge_commit_sha(b["pr_number"])
+    squash_merged = bool(merge_sha) and not git.is_ancestor(git.get_sha(target), parent)
+
+    if dry_run:
+        strategy = "squash-merge" if squash_merged else "regular merge"
+        err.print(f"\\[dry-run] land {target} ({strategy})")
+        for ab in above:
+            err.print(f"\\[dry-run] rebase {ab} onto {parent}")
+        return
+
+    if not force and sys.stdin.isatty():
+        click.confirm(f"Delete local branch {target!r}?", abort=True)
+
+    pre_shas = {n: git.get_sha(n) for n in above}
+    for ab in above:
+        git.checkout(ab)
+        if squash_merged:
+            result = git.rebase_onto(parent, target, ab)
+        else:
+            result = git.rebase(parent)
+        if result.returncode != 0:
+            for n, sha in pre_shas.items():
+                try:
+                    git.checkout(n)
+                    git._run(["git", "reset", "--hard", sha])
+                except Exception:
+                    pass
+            err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
+            sys.exit(3)
+
+    if not keep_branch:
+        git.checkout(parent)
+        git.delete_branch(target)
+
+    data = st.remove_branch(data, target)
+    st.save(root, data)
+
+    if not quiet:
+        n = len(above)
+        err.print(f"{target} landed. {n} branch{'es' if n != 1 else ''} restacked.")
+        err.print("Run 'arc status' to see your updated stack.")
+
+
+# ---------------------------------------------------------------------------
+# Task 14: arc amend + arc drop
+# ---------------------------------------------------------------------------
+
+@cli.command("amend")
+@click.option("-q", "--quiet", is_flag=True)
+def amend_cmd(quiet):
+    """Update commit message with PR link and stack position."""
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    current = git.current_branch()
+    b = st.get_branch(data, current)
+    if not b:
+        err.print(f"{current!r} is not in the stack.")
+        sys.exit(5)
+    names = st.branch_names(data)
+    position = f"{names.index(current) + 1}/{len(names)}"
+    existing_msg = git.get_commit_message()
+    pr_info = github.get_pr(current) if b["pr_number"] else None
+    pr_url = pr_info.get("url", "") if pr_info else ""
+    footer = f"\nArc-PR: {pr_url}\nArc-Stack-Position: {position}"
+    import re
+    if "Arc-PR:" not in existing_msg:
+        git.amend_message(existing_msg + footer)
+    else:
+        new_msg = re.sub(r"\nArc-PR:.*(\nArc-Stack-Position:.*)?", footer, existing_msg)
+        git.amend_message(new_msg)
+    if not quiet:
+        err.print("Commit message updated.")
+
+
+@cli.command("drop")
+@click.argument("branch")
+@click.option("-f", "--force", is_flag=True)
+@click.option("-n", "--dry-run", is_flag=True)
+@click.option("-q", "--quiet", is_flag=True)
+@click.option("--json", "output_json", is_flag=True)
+def drop_cmd(branch, force, dry_run, quiet, output_json):
+    """Remove a branch from the stack and restack above it."""
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    name = st.apply_prefix(data, branch)
+    if not st.get_branch(data, name):
+        err.print(f"{name!r} is not in the stack.")
+        sys.exit(5)
+    if not force and not dry_run:
+        if not sys.stdin.isatty():
+            err.print(f"Use --force to drop {name!r} non-interactively.")
+            sys.exit(5)
+        click.confirm(f"Remove {name!r} from stack?", default=False, abort=True)
+    parent = ops.parent_branch(data, name)
+    above = ops.upstack_branches(data, name)
+    if dry_run:
+        err.print(f"\\[dry-run] remove {name} from stack")
+        for ab in above:
+            err.print(f"\\[dry-run] rebase {ab} onto {parent}")
+        return
+    for ab in above:
+        git.checkout(ab)
+        result = git.rebase(parent)
+        if result.returncode != 0:
+            git.rebase_abort()
+            err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
+            sys.exit(3)
+    data = st.remove_branch(data, name)
+    st.save(root, data)
+    if not quiet:
+        err.print(f"{name} removed from stack.")
+
+
+# ---------------------------------------------------------------------------
+# Task 15: arc rebase
+# ---------------------------------------------------------------------------
+
+@cli.command("rebase")
+@click.option("--upstack", is_flag=True)
+@click.option("--downstack", is_flag=True)
+@click.option("--continue", "do_continue", is_flag=True)
+@click.option("--abort", "do_abort", is_flag=True)
+@click.option("-n", "--dry-run", is_flag=True)
+@click.option("-q", "--quiet", is_flag=True)
+def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
+    """Cascade-rebase the stack or part of it."""
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+
+    if do_continue:
+        result = git.rebase_continue()
+        if result.returncode != 0:
+            err.print("Rebase still has conflicts. Resolve and run 'arc rebase --continue' again.")
+            sys.exit(3)
+        err.print("Rebase continued.")
+        return
+
+    if do_abort:
+        git.rebase_abort()
+        err.print("Rebase aborted.")
+        return
+
+    current = git.current_branch()
+    names = st.branch_names(data)
+
+    if upstack:
+        targets = [current] + ops.upstack_branches(data, current)
+    elif downstack:
+        targets = ops.downstack_branches(data, current)
+    else:
+        targets = names
+
+    plan = [s for s in ops.rebase_plan(data) if s["branch"] in targets]
+
+    for step in plan:
+        branch, onto = step["branch"], step["onto"]
+        if dry_run:
+            err.print(f"\\[dry-run] rebase {branch} onto {onto}")
+            continue
+        if not quiet:
+            err.print(f"Rebasing {branch} onto {onto}...")
+        git.checkout(branch)
+        result = git.rebase(onto)
+        if result.returncode != 0:
+            git.rebase_abort()
+            files = git.conflicted_files()
+            err.print(f"Conflict in {branch}: {', '.join(files) or 'see git status'}")
+            err.print("Resolve conflicts, then run 'arc rebase --continue'.")
+            sys.exit(3)
+
+    if not dry_run and not quiet:
+        err.print("Rebase complete.")
+
+
+# ---------------------------------------------------------------------------
+# Task 16: Navigation commands
+# ---------------------------------------------------------------------------
+
+@cli.command("checkout")
+@click.argument("target")
+def checkout_cmd(target):
+    """Check out a branch by name or index (1-based)."""
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    if target.isdigit():
+        name = ops.branch_at_index(data, int(target))
+        if not name:
+            err.print(f"No branch at index {target}.")
+            sys.exit(5)
+    else:
+        name = st.apply_prefix(data, target)
+        if not st.get_branch(data, name):
+            err.print(f"{name!r} is not in the stack.")
+            sys.exit(5)
+    git.checkout(name)
+    err.print(f"Switched to {name}.")
+
+
+def _navigate(n: int, direction: int) -> None:
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    names = st.branch_names(data)
+    current = git.current_branch()
+    if current not in names:
+        err.print(f"{current!r} is not in the stack.")
+        sys.exit(5)
+    idx = names.index(current) + direction * n
+    idx = max(0, min(idx, len(names) - 1))
+    git.checkout(names[idx])
+    err.print(f"Switched to {names[idx]}.")
+
+
+@cli.command("up")
+@click.argument("n", default=1, type=int)
+def up_cmd(n):
+    """Move up n branches toward the top."""
+    _navigate(n, 1)
+
+
+@cli.command("down")
+@click.argument("n", default=1, type=int)
+def down_cmd(n):
+    """Move down n branches toward the trunk."""
+    _navigate(n, -1)
+
+
+@cli.command("top")
+def top_cmd():
+    """Jump to the topmost branch."""
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    names = st.branch_names(data)
+    if not names:
+        err.print("Stack is empty.")
+        return
+    git.checkout(names[-1])
+    err.print(f"Switched to {names[-1]}.")
+
+
+@cli.command("bottom")
+def bottom_cmd():
+    """Jump to the bottommost branch."""
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    names = st.branch_names(data)
+    if not names:
+        err.print("Stack is empty.")
+        return
+    git.checkout(names[0])
+    err.print(f"Switched to {names[0]}.")
