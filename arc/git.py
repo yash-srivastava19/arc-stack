@@ -36,7 +36,6 @@ def branch_exists(name: str) -> bool:
 
 
 def branch_exists_remote(name: str) -> bool:
-    """Check if branch exists on origin."""
     result = _run(["git", "branch", "-r", "--list", f"origin/{name}"], check=False)
     return bool(result.stdout.strip())
 
