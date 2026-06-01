@@ -749,3 +749,43 @@ def test_report_dry_run_prints_issue():
         result = runner.invoke(cli, ["report", "--bug", "--message", "test", "--dry-run"])
     assert result.exit_code == 0
     assert "[Environment]" in result.output or "test" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Passive error hints
+# ---------------------------------------------------------------------------
+
+def test_error_hint_printed_after_sync_exception(tmp_path):
+    """Hint is printed after unexpected sync failure."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.fetch", side_effect=RuntimeError("network error")):
+        result = runner.invoke(cli, ["sync"])
+    assert "arc report --bug" in result.output
+
+
+def test_error_hint_respects_enabled_false(tmp_path):
+    """Hint is suppressed when feedback.enabled=false in config."""
+    _write_state_with_branches(tmp_path)
+    import json as _json_mod
+    cfg = {"feedback": {"enabled": False}}
+    (tmp_path / ".arc" / "config.json").write_text(_json_mod.dumps(cfg))
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.fetch", side_effect=RuntimeError("network error")):
+        result = runner.invoke(cli, ["sync"])
+    assert "arc report --bug" not in result.output
+
+
+def test_error_hint_respects_prompt_after_error_false(tmp_path):
+    """Hint is suppressed when feedback.prompt_after_error=false in config."""
+    _write_state_with_branches(tmp_path)
+    import json as _json_mod
+    cfg = {"feedback": {"prompt_after_error": False}}
+    (tmp_path / ".arc" / "config.json").write_text(_json_mod.dumps(cfg))
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.fetch", side_effect=RuntimeError("network error")):
+        result = runner.invoke(cli, ["sync"])
+    assert "arc report --bug" not in result.output
