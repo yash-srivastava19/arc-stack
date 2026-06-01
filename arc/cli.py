@@ -222,16 +222,17 @@ def _render_status_tree(status: dict) -> None:
 
 
 def detect_merged_branches(data: dict) -> set[str]:
-    """Find branches in state that don't exist on remote."""
+    """Find branches in state that are actually merged (PR was merged on GitHub)."""
     merged = set()
     for branch in data["branches"]:
-        if not git.branch_exists_remote(branch["name"]):
+        pr_number = branch.get("pr_number")
+        if pr_number and github.pr_is_merged(pr_number):
             merged.add(branch["name"])
     return merged
 
 
-def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = False):
-    """Retarget PRs whose base branch was merged."""
+def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = False) -> dict:
+    """Retarget PRs whose base branch was merged, then prune merged branches from state."""
     for branch in data["branches"]:
         # Use positional parent derivation (matching ops.parent_branch logic)
         parent = ops.parent_branch(data, branch["name"])
@@ -241,6 +242,11 @@ def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = 
                 success = github.update_pr_base(pr_number, data["base"])
                 if success and not quiet:
                     err.print(f"Retargeted PR #{pr_number} to {data['base']}")
+
+    # Remove merged branches from state to avoid re-detecting them on the next sync
+    for branch_name in merged_branches:
+        data = st.remove_branch(data, branch_name)
+    return data
 
 
 @cli.command("sync")
@@ -295,7 +301,8 @@ def sync_cmd(dry_run, quiet, output_json):
             # Auto-retarget PRs whose base was merged
             merged_branches = detect_merged_branches(data)
             if merged_branches:
-                retarget_dependent_prs(data, merged_branches, quiet)
+                data = retarget_dependent_prs(data, merged_branches, quiet)
+                st.save(root, data)
 
         if not dry_run and not quiet:
             err.print("Stack synced. Run 'arc push' to push to remote.")

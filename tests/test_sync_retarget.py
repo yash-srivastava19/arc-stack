@@ -65,8 +65,8 @@ def test_update_pr_base_returns_false_on_exception():
         assert github.update_pr_base(10, "main") is False
 
 
-def test_detect_merged_branches_finds_missing():
-    """Find branches that don't exist on remote."""
+def test_detect_merged_branches_finds_merged_prs():
+    """Find branches whose PR was actually merged on GitHub."""
     state = {
         "base": "main",
         "branches": [
@@ -75,13 +75,33 @@ def test_detect_merged_branches_finds_missing():
         ]
     }
 
-    with patch("arc.git.branch_exists_remote") as mock_exists:
-        # feature-1 deleted, feature-2 still exists
-        mock_exists.side_effect = [False, True]
+    with patch("arc.github.pr_is_merged") as mock_merged:
+        # feature-1's PR merged, feature-2's PR still open
+        mock_merged.side_effect = [True, False]
 
         merged = detect_merged_branches(state)
 
         assert merged == {"feature-1"}
+
+
+def test_detect_merged_branches_ignores_unpushed():
+    """Branches without a PR number (e.g. created but not submitted) are never merged."""
+    state = {
+        "base": "main",
+        "branches": [
+            {"name": "feature-1", "pr_number": None, "revision": 0},
+            {"name": "feature-2", "pr_number": 2, "revision": 1},
+        ]
+    }
+
+    with patch("arc.github.pr_is_merged") as mock_merged:
+        mock_merged.return_value = False
+
+        merged = detect_merged_branches(state)
+
+        # feature-1 has no PR, so pr_is_merged is not consulted for it
+        assert merged == set()
+        mock_merged.assert_called_once_with(2)
 
 
 def test_retarget_dependent_prs_updates_base():
@@ -102,6 +122,23 @@ def test_retarget_dependent_prs_updates_base():
 
         # Only PR #2 should be retargeted (feature-2's base was feature-1)
         mock_update.assert_called_once_with(2, "main")
+
+
+def test_retarget_dependent_prs_prunes_merged_from_state():
+    """Merged branches are removed from the returned state to avoid re-detection."""
+    state = {
+        "base": "main",
+        "branches": [
+            {"name": "feature-1", "pr_number": 1, "revision": 1},
+            {"name": "feature-2", "pr_number": 2, "revision": 1},
+        ]
+    }
+
+    with patch("arc.github.update_pr_base", return_value=True):
+        new_state = retarget_dependent_prs(state, {"feature-1"}, quiet=True)
+
+    names = [b["name"] for b in new_state["branches"]]
+    assert names == ["feature-2"]
 
 
 def test_retarget_dependent_prs_prints_status():
