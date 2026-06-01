@@ -41,6 +41,27 @@ def update_pr_body(number: int, body: str) -> None:
     _run(["gh", "pr", "edit", str(number), "--body", body])
 
 
+def update_pr_base(pr_number: int, new_base: str) -> bool:
+    """Update a PR's base branch.
+
+    Args:
+        pr_number: The PR number to update
+        new_base: The new base branch name
+
+    Returns:
+        True if the update succeeded, False otherwise
+    """
+    try:
+        result = subprocess.run(
+            ["gh", "pr", "edit", str(pr_number), "--base", new_base],
+            capture_output=True,
+            timeout=10
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
+
+
 def mark_pr_ready(number: int) -> None:
     _run(["gh", "pr", "ready", str(number)])
 
