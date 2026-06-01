@@ -232,7 +232,14 @@ def detect_merged_branches(data: dict) -> set[str]:
 
 
 def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = False) -> dict:
-    """Retarget PRs whose base branch was merged, then prune merged branches from state."""
+    """Retarget PRs whose base branch was merged, then prune merged branches from state.
+
+    Note: This implementation always retargets to data["base"] (the stack root).
+    This works correctly for bottom-up merges but for non-contiguous merges
+    (e.g., middle branch merged) it may retarget to root instead of the nearest
+    unmerged ancestor. This is acceptable for the MVP; future work can optimize
+    to find the nearest unmerged parent.
+    """
     for branch in data["branches"]:
         # Use positional parent derivation (matching ops.parent_branch logic)
         parent = ops.parent_branch(data, branch["name"])
