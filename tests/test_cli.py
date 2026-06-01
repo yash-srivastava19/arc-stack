@@ -712,3 +712,146 @@ def test_bottom_jumps_to_first(tmp_path):
         result = runner.invoke(cli, ["bottom"])
     assert result.exit_code == 0
     mock_co.assert_called_once_with("feat/auth")
+
+
+# ---------------------------------------------------------------------------
+# Task 3: arc report
+# ---------------------------------------------------------------------------
+
+def test_report_bug_non_tty_requires_message():
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value="/tmp"):
+        result = runner.invoke(cli, ["report", "--bug"])
+    assert result.exit_code == 5
+    assert "message" in result.output.lower()
+
+
+def test_report_bug_with_message_non_tty():
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value="/tmp"), \
+         patch("arc.github.create_issue", return_value={"number": 42, "html_url": "https://gh/42"}):
+        result = runner.invoke(cli, ["report", "--bug", "--message", "test bug"])
+    assert result.exit_code == 0
+    assert "42" in result.output
+
+
+def test_report_feedback_with_message():
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value="/tmp"), \
+         patch("arc.github.create_issue", return_value={"number": 43, "html_url": "https://gh/43"}):
+        result = runner.invoke(cli, ["report", "--feedback", "--message", "feature request"])
+    assert result.exit_code == 0
+
+
+def test_report_dry_run_prints_issue():
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value="/tmp"):
+        result = runner.invoke(cli, ["report", "--bug", "--message", "test", "--dry-run"])
+    assert result.exit_code == 0
+    assert "[Environment]" in result.output or "test" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Passive error hints
+# ---------------------------------------------------------------------------
+
+def test_error_hint_printed_after_sync_exception(tmp_path):
+    """Hint is printed after unexpected sync failure."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.fetch", side_effect=RuntimeError("network error")):
+        result = runner.invoke(cli, ["sync"])
+    assert "arc report --bug" in result.output
+
+
+def test_error_hint_respects_enabled_false(tmp_path):
+    """Hint is suppressed when feedback.enabled=false in config."""
+    _write_state_with_branches(tmp_path)
+    import json as _json_mod
+    cfg = {"feedback": {"enabled": False}}
+    (tmp_path / ".arc" / "config.json").write_text(_json_mod.dumps(cfg))
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.fetch", side_effect=RuntimeError("network error")):
+        result = runner.invoke(cli, ["sync"])
+    assert "arc report --bug" not in result.output
+
+
+def test_error_hint_respects_prompt_after_error_false(tmp_path):
+    """Hint is suppressed when feedback.prompt_after_error=false in config."""
+    _write_state_with_branches(tmp_path)
+    import json as _json_mod
+    cfg = {"feedback": {"prompt_after_error": False}}
+    (tmp_path / ".arc" / "config.json").write_text(_json_mod.dumps(cfg))
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.fetch", side_effect=RuntimeError("network error")):
+        result = runner.invoke(cli, ["sync"])
+    assert "arc report --bug" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Periodic hints
+# ---------------------------------------------------------------------------
+
+def test_periodic_hint_printed_when_random_hits(tmp_path):
+    """Periodic feedback hint is printed when random returns 1."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.current_branch", return_value="feat/auth"), \
+         patch("arc.git.commit_count", return_value=2), \
+         patch("arc.git.is_ancestor", return_value=True), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.cli.random.randint", return_value=1):
+        result = runner.invoke(cli, ["status"])
+    assert "arc report --feedback" in result.output
+
+
+def test_periodic_hint_not_printed_when_random_misses(tmp_path):
+    """Periodic feedback hint is not printed when random doesn't return 1."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.current_branch", return_value="feat/auth"), \
+         patch("arc.git.commit_count", return_value=2), \
+         patch("arc.git.is_ancestor", return_value=True), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.cli.random.randint", return_value=2):
+        result = runner.invoke(cli, ["status"])
+    assert "arc report --feedback" not in result.output
+
+
+def test_periodic_hint_disabled_by_config(tmp_path):
+    """Periodic hint is suppressed when feedback.prompt_periodic=false."""
+    _write_state_with_branches(tmp_path)
+    import json as _json_mod
+    cfg = {"feedback": {"prompt_periodic": False}}
+    (tmp_path / ".arc" / "config.json").write_text(_json_mod.dumps(cfg))
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.current_branch", return_value="feat/auth"), \
+         patch("arc.git.commit_count", return_value=2), \
+         patch("arc.git.is_ancestor", return_value=True), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.cli.random.randint", return_value=1):
+        result = runner.invoke(cli, ["status"])
+    assert "arc report --feedback" not in result.output
+
+
+def test_periodic_hint_disabled_when_feedback_disabled(tmp_path):
+    """Periodic hint is suppressed when feedback.enabled=false."""
+    _write_state_with_branches(tmp_path)
+    import json as _json_mod
+    cfg = {"feedback": {"enabled": False}}
+    (tmp_path / ".arc" / "config.json").write_text(_json_mod.dumps(cfg))
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.current_branch", return_value="feat/auth"), \
+         patch("arc.git.commit_count", return_value=2), \
+         patch("arc.git.is_ancestor", return_value=True), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.cli.random.randint", return_value=1):
+        result = runner.invoke(cli, ["status"])
+    assert "arc report --feedback" not in result.output

@@ -1,7 +1,10 @@
 from __future__ import annotations
 import json as _json
+import os
+import random
 import subprocess as _subprocess
 import sys
+import tempfile
 import click
 from rich.console import Console
 from rich.tree import Tree
@@ -24,6 +27,41 @@ def cli(ctx, no_color):
     if no_color:
         import os
         os.environ["NO_COLOR"] = "1"
+
+
+def _maybe_print_periodic_hint(root) -> None:
+    """Randomly print non-blocking feedback hint on success."""
+    try:
+        config = st.load_config(root)
+    except Exception:
+        config = {}
+    feedback_config = config.get("feedback", {})
+
+    if not feedback_config.get("enabled", True):
+        return
+    if not feedback_config.get("prompt_periodic", True):
+        return
+
+    rate = feedback_config.get("prompt_periodic_rate", 5)
+
+    if random.randint(1, rate) == 1:
+        err.print("→ Feedback welcome? arc report --feedback", style="dim")
+
+
+def _maybe_print_error_hint(root) -> None:
+    """Print non-blocking hint about arc report --bug after error."""
+    try:
+        config = st.load_config(root)
+    except Exception:
+        config = {}
+    feedback_config = config.get("feedback", {})
+
+    if not feedback_config.get("enabled", True):
+        return
+    if not feedback_config.get("prompt_after_error", True):
+        return
+
+    err.print("→ Report this: arc report --bug", style="dim")
 
 
 def _check_setup() -> bool:
@@ -167,6 +205,7 @@ def status_cmd(output_json, plain, quiet):
         hint = ops.next_step_hint(status)
         if hint:
             err.print(f"\n→ {hint}")
+    _maybe_print_periodic_hint(root)
 
 
 def _render_status_tree(status: dict) -> None:
@@ -194,42 +233,51 @@ def sync_cmd(dry_run, quiet, output_json):
         err.print("Stack is empty. Run 'arc new <branch>' to add a branch.")
         return
 
-    if not quiet:
-        err.print("Fetching...", end=" ")
-    if not dry_run:
-        git.fetch()
-    if not quiet:
-        err.print("done.")
-
-    plan = ops.rebase_plan(data)
-    pre_shas = {}
-    if not dry_run:
-        pre_shas = {b["name"]: git.get_sha(b["name"]) for b in data["branches"]}
-
-    for step in plan:
-        branch, onto = step["branch"], step["onto"]
-        if dry_run:
-            err.print(f"\\[dry-run] rebase {branch} onto {onto}")
-            continue
+    try:
         if not quiet:
-            err.print(f"Rebasing {branch} onto {onto}...")
-        git.checkout(branch)
-        result = git.rebase(onto)
-        if result.returncode != 0:
-            git.rebase_abort()
-            for name, sha in pre_shas.items():
-                try:
-                    git.checkout(name)
-                    git._run(["git", "reset", "--hard", sha])
-                except Exception:
-                    pass
-            files = git.conflicted_files()
-            err.print(f"Conflict in {branch}. Resolve: {', '.join(files) or 'see git status'}")
-            err.print("Then run 'arc rebase --continue' or 'arc rebase --abort'.")
-            sys.exit(3)
+            err.print("Fetching...", end=" ")
+        if not dry_run:
+            git.fetch()
+        if not quiet:
+            err.print("done.")
 
-    if not dry_run and not quiet:
-        err.print("Stack synced. Run 'arc push' to push to remote.")
+        plan = ops.rebase_plan(data)
+        pre_shas = {}
+        if not dry_run:
+            pre_shas = {b["name"]: git.get_sha(b["name"]) for b in data["branches"]}
+
+        for step in plan:
+            branch, onto = step["branch"], step["onto"]
+            if dry_run:
+                err.print(f"\\[dry-run] rebase {branch} onto {onto}")
+                continue
+            if not quiet:
+                err.print(f"Rebasing {branch} onto {onto}...")
+            git.checkout(branch)
+            result = git.rebase(onto)
+            if result.returncode != 0:
+                git.rebase_abort()
+                for name, sha in pre_shas.items():
+                    try:
+                        git.checkout(name)
+                        git._run(["git", "reset", "--hard", sha])
+                    except Exception:
+                        pass
+                files = git.conflicted_files()
+                err.print(f"Conflict in {branch}. Resolve: {', '.join(files) or 'see git status'}")
+                err.print("Then run 'arc rebase --continue' or 'arc rebase --abort'.")
+                _maybe_print_error_hint(root)
+                sys.exit(3)
+
+        if not dry_run and not quiet:
+            err.print("Stack synced. Run 'arc push' to push to remote.")
+        if not dry_run:
+            _maybe_print_periodic_hint(root)
+    except SystemExit:
+        raise
+    except Exception:
+        _maybe_print_error_hint(root)
+        raise
 
 
 @cli.command("push")
@@ -244,18 +292,25 @@ def push_cmd(dry_run, quiet, output_json):
     if not names:
         err.print("Stack is empty.")
         return
-    if dry_run:
+    try:
+        if dry_run:
+            for name in names:
+                sha = git.get_sha(name)
+                err.print(f"\\[dry-run] push {name} ({sha[:8]})")
+            return
+        git.force_push(names)
         for name in names:
-            sha = git.get_sha(name)
-            err.print(f"\\[dry-run] push {name} ({sha[:8]})")
-        return
-    git.force_push(names)
-    for name in names:
-        current_rev = st.get_branch(data, name)["revision"]
-        data = st.update_branch(data, name, revision=current_rev + 1)
-    st.save(root, data)
-    if not quiet:
-        err.print(f"Pushed {len(names)} branches. Run 'arc submit' to create pull requests.")
+            current_rev = st.get_branch(data, name)["revision"]
+            data = st.update_branch(data, name, revision=current_rev + 1)
+        st.save(root, data)
+        if not quiet:
+            err.print(f"Pushed {len(names)} branches. Run 'arc submit' to create pull requests.")
+        _maybe_print_periodic_hint(root)
+    except SystemExit:
+        raise
+    except Exception:
+        _maybe_print_error_hint(root)
+        raise
 
 
 def _run_hooks(root, hooks: list[str]) -> None:
@@ -283,56 +338,64 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
         err.print("Stack is empty.")
         return
 
-    cfg = st.load_config(root)
-    hooks = cfg.get("hooks", {}).get("pre-submit", [])
-    if hooks and not skip_hooks and not dry_run:
-        _run_hooks(root, hooks)
-    elif hooks and skip_hooks and not quiet:
-        err.print("Warning: pre-submit hooks skipped.")
+    try:
+        cfg = st.load_config(root)
+        hooks = cfg.get("hooks", {}).get("pre-submit", [])
+        if hooks and not skip_hooks and not dry_run:
+            _run_hooks(root, hooks)
+        elif hooks and skip_hooks and not quiet:
+            err.print("Warning: pre-submit hooks skipped.")
 
-    use_draft = draft and not mark_open
-    created, updated = [], []
+        use_draft = draft and not mark_open
+        created, updated = [], []
 
-    for i, b in enumerate(branches):
-        name = b["name"]
-        base = data["base"] if i == 0 else branches[i - 1]["name"]
+        for i, b in enumerate(branches):
+            name = b["name"]
+            base = data["base"] if i == 0 else branches[i - 1]["name"]
 
-        if dry_run:
+            if dry_run:
+                existing = github.get_pr(name)
+                action = "create" if not existing else "update"
+                err.print(f"\\[dry-run] {action} PR for {name} (base: {base})")
+                continue
+
+            subject = git.get_commit_subject(name)
+            body_text = git.get_commit_body(name)
+            count = git.commit_count(base, name)
+            title = ops.build_pr_title(subject if count == 1 else "", name)
+            entries = [
+                {"name": x["name"], "pr_number": x["pr_number"], "is_current": x["name"] == name}
+                for x in branches
+            ]
+            body = ops.build_pr_body(body_text, entries, data["base"])
+
             existing = github.get_pr(name)
-            action = "create" if not existing else "update"
-            err.print(f"\\[dry-run] {action} PR for {name} (base: {base})")
-            continue
+            if not existing:
+                pr = github.create_pr(name, base, title, body, draft=use_draft)
+                data = st.update_branch(data, name, pr_number=pr["number"])
+                created.append({"branch": name, "pr_number": pr["number"], "pr_url": pr["url"]})
+            else:
+                pr_number = b["pr_number"] or existing["number"]
+                github.update_pr_body(pr_number, body)
+                if mark_open:
+                    github.mark_pr_ready(pr_number)
+                updated.append({"branch": name, "pr_number": pr_number,
+                                "pr_url": existing.get("url"), "revision": b["revision"]})
 
-        subject = git.get_commit_subject(name)
-        body_text = git.get_commit_body(name)
-        count = git.commit_count(base, name)
-        title = ops.build_pr_title(subject if count == 1 else "", name)
-        entries = [
-            {"name": x["name"], "pr_number": x["pr_number"], "is_current": x["name"] == name}
-            for x in branches
-        ]
-        body = ops.build_pr_body(body_text, entries, data["base"])
+        if not dry_run:
+            st.save(root, data)
 
-        existing = github.get_pr(name)
-        if not existing:
-            pr = github.create_pr(name, base, title, body, draft=use_draft)
-            data = st.update_branch(data, name, pr_number=pr["number"])
-            created.append({"branch": name, "pr_number": pr["number"], "pr_url": pr["url"]})
-        else:
-            pr_number = b["pr_number"] or existing["number"]
-            github.update_pr_body(pr_number, body)
-            if mark_open:
-                github.mark_pr_ready(pr_number)
-            updated.append({"branch": name, "pr_number": pr_number,
-                            "pr_url": existing.get("url"), "revision": b["revision"]})
-
-    if not dry_run:
-        st.save(root, data)
-
-    if output_json and not dry_run:
-        out.print_json(_json.dumps({"created": created, "updated": updated}))
-    elif not quiet and not dry_run:
-        err.print("PRs ready. View your stack with 'arc status'.")
+        if output_json and not dry_run:
+            out.print_json(_json.dumps({"created": created, "updated": updated}))
+        elif not quiet and not dry_run:
+            err.print("PRs ready. View your stack with 'arc status'.")
+        if not dry_run:
+            _maybe_print_periodic_hint(root)
+    except SystemExit:
+        raise
+    except Exception:
+        _maybe_print_error_hint(root)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -384,34 +447,41 @@ def land_cmd(branch, force, dry_run, keep_branch, quiet, output_json):
     if not force and sys.stdin.isatty():
         click.confirm(f"Delete local branch {target!r}?", abort=True)
 
-    pre_shas = {n: git.get_sha(n) for n in above}
-    for ab in above:
-        git.checkout(ab)
-        if squash_merged:
-            result = git.rebase_onto(parent, target, ab)
-        else:
-            result = git.rebase(parent)
-        if result.returncode != 0:
-            for n, sha in pre_shas.items():
-                try:
-                    git.checkout(n)
-                    git._run(["git", "reset", "--hard", sha])
-                except Exception:
-                    pass
-            err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
-            sys.exit(3)
+    try:
+        pre_shas = {n: git.get_sha(n) for n in above}
+        for ab in above:
+            git.checkout(ab)
+            if squash_merged:
+                result = git.rebase_onto(parent, target, ab)
+            else:
+                result = git.rebase(parent)
+            if result.returncode != 0:
+                for n, sha in pre_shas.items():
+                    try:
+                        git.checkout(n)
+                        git._run(["git", "reset", "--hard", sha])
+                    except Exception:
+                        pass
+                err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
+                _maybe_print_error_hint(root)
+                sys.exit(3)
 
-    if not keep_branch:
-        git.checkout(parent)
-        git.delete_branch(target)
+        if not keep_branch:
+            git.checkout(parent)
+            git.delete_branch(target)
 
-    data = st.remove_branch(data, target)
-    st.save(root, data)
+        data = st.remove_branch(data, target)
+        st.save(root, data)
 
-    if not quiet:
-        n = len(above)
-        err.print(f"{target} landed. {n} branch{'es' if n != 1 else ''} restacked.")
-        err.print("Run 'arc status' to see your updated stack.")
+        if not quiet:
+            n = len(above)
+            err.print(f"{target} landed. {n} branch{'es' if n != 1 else ''} restacked.")
+            err.print("Run 'arc status' to see your updated stack.")
+    except SystemExit:
+        raise
+    except Exception:
+        _maybe_print_error_hint(root)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -471,17 +541,24 @@ def drop_cmd(branch, force, dry_run, quiet, output_json):
         for ab in above:
             err.print(f"\\[dry-run] rebase {ab} onto {parent}")
         return
-    for ab in above:
-        git.checkout(ab)
-        result = git.rebase(parent)
-        if result.returncode != 0:
-            git.rebase_abort()
-            err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
-            sys.exit(3)
-    data = st.remove_branch(data, name)
-    st.save(root, data)
-    if not quiet:
-        err.print(f"{name} removed from stack.")
+    try:
+        for ab in above:
+            git.checkout(ab)
+            result = git.rebase(parent)
+            if result.returncode != 0:
+                git.rebase_abort()
+                err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
+                _maybe_print_error_hint(root)
+                sys.exit(3)
+        data = st.remove_branch(data, name)
+        st.save(root, data)
+        if not quiet:
+            err.print(f"{name} removed from stack.")
+    except SystemExit:
+        raise
+    except Exception:
+        _maybe_print_error_hint(root)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -525,24 +602,31 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
 
     plan = [s for s in ops.rebase_plan(data) if s["branch"] in targets]
 
-    for step in plan:
-        branch, onto = step["branch"], step["onto"]
-        if dry_run:
-            err.print(f"\\[dry-run] rebase {branch} onto {onto}")
-            continue
-        if not quiet:
-            err.print(f"Rebasing {branch} onto {onto}...")
-        git.checkout(branch)
-        result = git.rebase(onto)
-        if result.returncode != 0:
-            git.rebase_abort()
-            files = git.conflicted_files()
-            err.print(f"Conflict in {branch}: {', '.join(files) or 'see git status'}")
-            err.print("Resolve conflicts, then run 'arc rebase --continue'.")
-            sys.exit(3)
+    try:
+        for step in plan:
+            branch, onto = step["branch"], step["onto"]
+            if dry_run:
+                err.print(f"\\[dry-run] rebase {branch} onto {onto}")
+                continue
+            if not quiet:
+                err.print(f"Rebasing {branch} onto {onto}...")
+            git.checkout(branch)
+            result = git.rebase(onto)
+            if result.returncode != 0:
+                git.rebase_abort()
+                files = git.conflicted_files()
+                err.print(f"Conflict in {branch}: {', '.join(files) or 'see git status'}")
+                err.print("Resolve conflicts, then run 'arc rebase --continue'.")
+                _maybe_print_error_hint(root)
+                sys.exit(3)
 
-    if not dry_run and not quiet:
-        err.print("Rebase complete.")
+        if not dry_run and not quiet:
+            err.print("Rebase complete.")
+    except SystemExit:
+        raise
+    except Exception:
+        _maybe_print_error_hint(root)
+        raise
 
 
 # ---------------------------------------------------------------------------
@@ -621,3 +705,77 @@ def bottom_cmd():
         return
     git.checkout(names[0])
     err.print(f"Switched to {names[0]}.")
+
+
+# ---------------------------------------------------------------------------
+# Task 3: arc report
+# ---------------------------------------------------------------------------
+
+def _open_editor(template: str) -> str:
+    """Open $EDITOR with template, return edited text."""
+    editor = os.environ.get("EDITOR", "vi")
+
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".md", delete=False) as f:
+        f.write(template)
+        f.flush()
+        temp_path = f.name
+
+    try:
+        _subprocess.run([editor, temp_path], check=False)
+        with open(temp_path, "r") as f:
+            return f.read()
+    finally:
+        os.unlink(temp_path)
+
+
+@cli.command("report")
+@click.option("--bug", is_flag=True)
+@click.option("--feedback", is_flag=True)
+@click.option("--message", type=str, default=None)
+@click.option("-n", "--dry-run", is_flag=True)
+@click.option("-q", "--quiet", is_flag=True)
+def report_cmd(bug, feedback, message, dry_run, quiet):
+    """Report a bug or share feedback."""
+    from arc import report as report_module
+
+    root = git.find_repo_root()
+
+    # Determine issue type
+    issue_type = "bug" if bug else ("feedback" if feedback else "bug")
+
+    # Non-TTY requires --message
+    if not sys.stdin.isatty() and not message:
+        err.print("Non-interactive mode requires --message flag.")
+        err.print("Usage: arc report --bug --message \"description\"")
+        sys.exit(5)
+
+    # Get user text (either from --message or editor)
+    if message:
+        user_text = message
+    else:
+        # TTY: open editor
+        template = report_module.collect_env_context() + "\n---\n\nDescribe the issue here..."
+        user_text = _open_editor(template)
+        if not user_text or not user_text.strip():
+            err.print("Aborted: no issue description provided.")
+            sys.exit(1)
+
+    # Format issue body
+    body = report_module.format_issue_body(user_text, error_message=None)
+
+    # Dry-run: print and exit
+    if dry_run:
+        out.print(body)
+        return
+
+    # Create issue
+    title = f"[{issue_type}] User report"
+    result = github.create_issue(title, body)
+
+    if result:
+        if not quiet:
+            err.print(f"Issue #{result['number']} created: {result['html_url']}")
+        out.print(result["html_url"])
+    else:
+        err.print("Failed to create issue.")
+        sys.exit(4)
