@@ -233,12 +233,14 @@ def detect_merged_branches(data: dict) -> set[str]:
 def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = False):
     """Retarget PRs whose base branch was merged."""
     for branch in data["branches"]:
-        if branch.get("base") in merged_branches:
+        # Use positional parent derivation (matching ops.parent_branch logic)
+        parent = ops.parent_branch(data, branch["name"])
+        if parent in merged_branches:
             pr_number = branch.get("pr_number")
             if pr_number:
-                success = github.update_pr_base(pr_number, "main")
+                success = github.update_pr_base(pr_number, data["base"])
                 if success and not quiet:
-                    err.print(f"Retargeted PR #{pr_number} to main")
+                    err.print(f"Retargeted PR #{pr_number} to {data['base']}")
 
 
 @cli.command("sync")

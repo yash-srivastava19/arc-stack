@@ -70,8 +70,8 @@ def test_detect_merged_branches_finds_missing():
     state = {
         "base": "main",
         "branches": [
-            {"name": "feature-1", "base": "main", "pr_number": 1},
-            {"name": "feature-2", "base": "feature-1", "pr_number": 2},
+            {"name": "feature-1", "pr_number": 1, "revision": 1},
+            {"name": "feature-2", "pr_number": 2, "revision": 1},
         ]
     }
 
@@ -89,9 +89,9 @@ def test_retarget_dependent_prs_updates_base():
     state = {
         "base": "main",
         "branches": [
-            {"name": "feature-1", "base": "main", "pr_number": 1},
-            {"name": "feature-2", "base": "feature-1", "pr_number": 2},
-            {"name": "feature-3", "base": "feature-2", "pr_number": 3},
+            {"name": "feature-1", "pr_number": 1, "revision": 1},
+            {"name": "feature-2", "pr_number": 2, "revision": 1},
+            {"name": "feature-3", "pr_number": 3, "revision": 1},
         ]
     }
 
@@ -109,8 +109,8 @@ def test_retarget_dependent_prs_prints_status():
     state = {
         "base": "main",
         "branches": [
-            {"name": "feature-1", "base": "main", "pr_number": 1},
-            {"name": "feature-2", "base": "feature-1", "pr_number": 2},
+            {"name": "feature-1", "pr_number": 1, "revision": 1},
+            {"name": "feature-2", "pr_number": 2, "revision": 1},
         ]
     }
 
