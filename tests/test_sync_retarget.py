@@ -1,6 +1,7 @@
 from unittest.mock import patch, MagicMock, Mock
 import subprocess
 from arc import git, github
+from arc.cli import detect_merged_branches, retarget_dependent_prs
 
 
 def mock_result(stdout="", returncode=0, stderr=""):
@@ -62,3 +63,64 @@ def test_update_pr_base_returns_false_on_exception():
     with patch("subprocess.run") as mock_run:
         mock_run.side_effect = subprocess.TimeoutExpired("gh", 10)
         assert github.update_pr_base(10, "main") is False
+
+
+def test_detect_merged_branches_finds_missing():
+    """Find branches that don't exist on remote."""
+    state = {
+        "base": "main",
+        "branches": [
+            {"name": "feature-1", "base": "main", "pr_number": 1},
+            {"name": "feature-2", "base": "feature-1", "pr_number": 2},
+        ]
+    }
+
+    with patch("arc.git.branch_exists_remote") as mock_exists:
+        # feature-1 deleted, feature-2 still exists
+        mock_exists.side_effect = [False, True]
+
+        merged = detect_merged_branches(state)
+
+        assert merged == {"feature-1"}
+
+
+def test_retarget_dependent_prs_updates_base():
+    """Retarget PRs whose base was merged."""
+    state = {
+        "base": "main",
+        "branches": [
+            {"name": "feature-1", "base": "main", "pr_number": 1},
+            {"name": "feature-2", "base": "feature-1", "pr_number": 2},
+            {"name": "feature-3", "base": "feature-2", "pr_number": 3},
+        ]
+    }
+
+    with patch("arc.github.update_pr_base") as mock_update:
+        mock_update.return_value = True
+
+        retarget_dependent_prs(state, {"feature-1"}, quiet=True)
+
+        # Only PR #2 should be retargeted (feature-2's base was feature-1)
+        mock_update.assert_called_once_with(2, "main")
+
+
+def test_retarget_dependent_prs_prints_status():
+    """Print status message for each retargeted PR."""
+    state = {
+        "base": "main",
+        "branches": [
+            {"name": "feature-1", "base": "main", "pr_number": 1},
+            {"name": "feature-2", "base": "feature-1", "pr_number": 2},
+        ]
+    }
+
+    with patch("arc.github.update_pr_base") as mock_update:
+        mock_update.return_value = True
+
+        with patch("arc.cli.err.print") as mock_print:
+            retarget_dependent_prs(state, {"feature-1"}, quiet=False)
+
+            # Verify status message was printed
+            mock_print.assert_called_once()
+            call_args = mock_print.call_args[0][0]
+            assert "Retargeted PR #2 to main" in call_args

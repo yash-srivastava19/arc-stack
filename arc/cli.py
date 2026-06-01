@@ -221,6 +221,26 @@ def _render_status_tree(status: dict) -> None:
     out.print(tree)
 
 
+def detect_merged_branches(data: dict) -> set[str]:
+    """Find branches in state that don't exist on remote."""
+    merged = set()
+    for branch in data["branches"]:
+        if not git.branch_exists_remote(branch["name"]):
+            merged.add(branch["name"])
+    return merged
+
+
+def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = False):
+    """Retarget PRs whose base branch was merged."""
+    for branch in data["branches"]:
+        if branch.get("base") in merged_branches:
+            pr_number = branch.get("pr_number")
+            if pr_number:
+                success = github.update_pr_base(pr_number, "main")
+                if success and not quiet:
+                    err.print(f"Retargeted PR #{pr_number} to main")
+
+
 @cli.command("sync")
 @click.option("-n", "--dry-run", is_flag=True)
 @click.option("-q", "--quiet", is_flag=True)
@@ -268,6 +288,12 @@ def sync_cmd(dry_run, quiet, output_json):
                 err.print("Then run 'arc rebase --continue' or 'arc rebase --abort'.")
                 _maybe_print_error_hint(root)
                 sys.exit(3)
+
+        if not dry_run:
+            # Auto-retarget PRs whose base was merged
+            merged_branches = detect_merged_branches(data)
+            if merged_branches:
+                retarget_dependent_prs(data, merged_branches, quiet)
 
         if not dry_run and not quiet:
             err.print("Stack synced. Run 'arc push' to push to remote.")
