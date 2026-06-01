@@ -789,3 +789,69 @@ def test_error_hint_respects_prompt_after_error_false(tmp_path):
          patch("arc.git.fetch", side_effect=RuntimeError("network error")):
         result = runner.invoke(cli, ["sync"])
     assert "arc report --bug" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Periodic hints
+# ---------------------------------------------------------------------------
+
+def test_periodic_hint_printed_when_random_hits(tmp_path):
+    """Periodic feedback hint is printed when random returns 1."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.current_branch", return_value="feat/auth"), \
+         patch("arc.git.commit_count", return_value=2), \
+         patch("arc.git.is_ancestor", return_value=True), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.cli.random.randint", return_value=1):
+        result = runner.invoke(cli, ["status"])
+    assert "arc report --feedback" in result.output
+
+
+def test_periodic_hint_not_printed_when_random_misses(tmp_path):
+    """Periodic feedback hint is not printed when random doesn't return 1."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.current_branch", return_value="feat/auth"), \
+         patch("arc.git.commit_count", return_value=2), \
+         patch("arc.git.is_ancestor", return_value=True), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.cli.random.randint", return_value=2):
+        result = runner.invoke(cli, ["status"])
+    assert "arc report --feedback" not in result.output
+
+
+def test_periodic_hint_disabled_by_config(tmp_path):
+    """Periodic hint is suppressed when feedback.prompt_periodic=false."""
+    _write_state_with_branches(tmp_path)
+    import json as _json_mod
+    cfg = {"feedback": {"prompt_periodic": False}}
+    (tmp_path / ".arc" / "config.json").write_text(_json_mod.dumps(cfg))
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.current_branch", return_value="feat/auth"), \
+         patch("arc.git.commit_count", return_value=2), \
+         patch("arc.git.is_ancestor", return_value=True), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.cli.random.randint", return_value=1):
+        result = runner.invoke(cli, ["status"])
+    assert "arc report --feedback" not in result.output
+
+
+def test_periodic_hint_disabled_when_feedback_disabled(tmp_path):
+    """Periodic hint is suppressed when feedback.enabled=false."""
+    _write_state_with_branches(tmp_path)
+    import json as _json_mod
+    cfg = {"feedback": {"enabled": False}}
+    (tmp_path / ".arc" / "config.json").write_text(_json_mod.dumps(cfg))
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path), \
+         patch("arc.git.current_branch", return_value="feat/auth"), \
+         patch("arc.git.commit_count", return_value=2), \
+         patch("arc.git.is_ancestor", return_value=True), \
+         patch("arc.github.get_pr", return_value=None), \
+         patch("arc.cli.random.randint", return_value=1):
+        result = runner.invoke(cli, ["status"])
+    assert "arc report --feedback" not in result.output

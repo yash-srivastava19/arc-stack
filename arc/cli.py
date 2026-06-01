@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json as _json
 import os
+import random
 import subprocess as _subprocess
 import sys
 import tempfile
@@ -26,6 +27,25 @@ def cli(ctx, no_color):
     if no_color:
         import os
         os.environ["NO_COLOR"] = "1"
+
+
+def _maybe_print_periodic_hint(root) -> None:
+    """Randomly print non-blocking feedback hint on success."""
+    try:
+        config = st.load_config(root)
+    except Exception:
+        config = {}
+    feedback_config = config.get("feedback", {})
+
+    if not feedback_config.get("enabled", True):
+        return
+    if not feedback_config.get("prompt_periodic", True):
+        return
+
+    rate = feedback_config.get("prompt_periodic_rate", 5)
+
+    if random.randint(1, rate) == 1:
+        err.print("→ Feedback welcome? arc report --feedback", style="dim")
 
 
 def _maybe_print_error_hint(root) -> None:
@@ -185,6 +205,7 @@ def status_cmd(output_json, plain, quiet):
         hint = ops.next_step_hint(status)
         if hint:
             err.print(f"\n→ {hint}")
+    _maybe_print_periodic_hint(root)
 
 
 def _render_status_tree(status: dict) -> None:
@@ -250,6 +271,8 @@ def sync_cmd(dry_run, quiet, output_json):
 
         if not dry_run and not quiet:
             err.print("Stack synced. Run 'arc push' to push to remote.")
+        if not dry_run:
+            _maybe_print_periodic_hint(root)
     except SystemExit:
         raise
     except Exception:
@@ -282,6 +305,7 @@ def push_cmd(dry_run, quiet, output_json):
         st.save(root, data)
         if not quiet:
             err.print(f"Pushed {len(names)} branches. Run 'arc submit' to create pull requests.")
+        _maybe_print_periodic_hint(root)
     except SystemExit:
         raise
     except Exception:
@@ -365,6 +389,8 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
             out.print_json(_json.dumps({"created": created, "updated": updated}))
         elif not quiet and not dry_run:
             err.print("PRs ready. View your stack with 'arc status'.")
+        if not dry_run:
+            _maybe_print_periodic_hint(root)
     except SystemExit:
         raise
     except Exception:
