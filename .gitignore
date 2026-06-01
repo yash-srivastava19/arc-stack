@@ -28,3 +28,6 @@ htmlcov/
 
 # Internal design docs — not for public repo
 docs/superpowers/
+
+# VCR cassettes — recorded API interactions (may contain tokens)
+tests/cassettes/
