@@ -1,4 +1,5 @@
 from unittest.mock import patch, MagicMock, Mock
+import subprocess
 from arc import git, github
 
 
@@ -33,15 +34,13 @@ def test_update_pr_base_changes_base_branch():
 
         result = github.update_pr_base(10, "main")
 
-        # Verify gh pr edit was called
-        mock_run.assert_called_once()
-        args = mock_run.call_args[0][0]
-        assert "gh" in args
-        assert "pr" in args
-        assert "edit" in args
-        assert "10" in args
-        assert "--base" in args
-        assert "main" in args
+        # Verify the exact command and all arguments
+        mock_run.assert_called_once_with(
+            ["gh", "pr", "edit", "10", "--base", "main"],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
 
 
 def test_update_pr_base_returns_true_on_success():
@@ -55,4 +54,11 @@ def test_update_pr_base_returns_false_on_failure():
     """Returns False if gh command fails."""
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=1)
+        assert github.update_pr_base(10, "main") is False
+
+
+def test_update_pr_base_returns_false_on_exception():
+    """Returns False if subprocess raises an exception."""
+    with patch("subprocess.run") as mock_run:
+        mock_run.side_effect = subprocess.TimeoutExpired("gh", 10)
         assert github.update_pr_base(10, "main") is False

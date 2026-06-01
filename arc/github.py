@@ -55,6 +55,7 @@ def update_pr_base(pr_number: int, new_base: str) -> bool:
         result = subprocess.run(
             ["gh", "pr", "edit", str(pr_number), "--base", new_base],
             capture_output=True,
+            text=True,
             timeout=10
         )
         return result.returncode == 0
