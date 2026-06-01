@@ -58,3 +58,36 @@ def get_merge_commit_sha(number: int) -> str | None:
         return None
     commit = json.loads(result.stdout).get("mergeCommit")
     return commit.get("oid") if commit else None
+
+
+def create_issue(title: str, body: str) -> dict | None:
+    """Create a GitHub issue via gh CLI.
+
+    Args:
+        title: The issue title
+        body: The issue body (markdown)
+
+    Returns:
+        dict with "number" and "html_url" keys, or None on failure
+    """
+    try:
+        result = _run(
+            ["gh", "issue", "create", "--title", title, "--body", body],
+            check=False,
+        )
+
+        if result.returncode != 0:
+            return None
+
+        # gh outputs the issue URL: https://github.com/owner/repo/issues/42
+        url = result.stdout.strip()
+
+        # Extract issue number from URL
+        issue_number = int(url.split("/")[-1])
+
+        return {
+            "number": issue_number,
+            "html_url": url,
+        }
+    except Exception:
+        return None

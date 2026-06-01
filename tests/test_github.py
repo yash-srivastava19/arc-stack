@@ -85,3 +85,34 @@ def test_mark_pr_ready_calls_gh():
         mock_run.return_value = mock_result()
         github.mark_pr_ready(42)
     mock_run.assert_called_once_with(["gh", "pr", "ready", "42"])
+
+
+def test_create_issue_calls_gh_api():
+    """Test that create_issue calls gh api and returns parsed result."""
+    with patch("arc.github._run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0,
+            stdout='https://github.com/<OWNER>/<REPO>/issues/42\n'
+        )
+        result = github.create_issue(title="Bug Report", body="Description here")
+
+        assert result is not None
+        assert result["number"] == 42
+        assert "github.com" in result["html_url"]
+        assert "<OWNER>" in result["html_url"]  # Matches mock output
+
+
+def test_create_issue_returns_none_on_failure():
+    """Test that create_issue returns None on API error."""
+    with patch("arc.github._run") as mock_run:
+        mock_run.side_effect = Exception("API error")
+        result = github.create_issue(title="Bug", body="Description")
+        assert result is None
+
+
+def test_create_issue_returns_none_on_nonzero_exit():
+    """Test that create_issue returns None if gh command fails."""
+    with patch("arc.github._run") as mock_run:
+        mock_run.return_value = MagicMock(returncode=1, stdout="")
+        result = github.create_issue(title="Bug", body="Description")
+        assert result is None
