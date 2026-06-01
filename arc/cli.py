@@ -1,7 +1,9 @@
 from __future__ import annotations
 import json as _json
+import os
 import subprocess as _subprocess
 import sys
+import tempfile
 import click
 from rich.console import Console
 from rich.tree import Tree
@@ -621,3 +623,77 @@ def bottom_cmd():
         return
     git.checkout(names[0])
     err.print(f"Switched to {names[0]}.")
+
+
+# ---------------------------------------------------------------------------
+# Task 3: arc report
+# ---------------------------------------------------------------------------
+
+def _open_editor(template: str) -> str:
+    """Open $EDITOR with template, return edited text."""
+    editor = os.environ.get("EDITOR", "vi")
+
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".md", delete=False) as f:
+        f.write(template)
+        f.flush()
+        temp_path = f.name
+
+    try:
+        _subprocess.run([editor, temp_path], check=False)
+        with open(temp_path, "r") as f:
+            return f.read()
+    finally:
+        os.unlink(temp_path)
+
+
+@cli.command("report")
+@click.option("--bug", is_flag=True)
+@click.option("--feedback", is_flag=True)
+@click.option("--message", type=str, default=None)
+@click.option("-n", "--dry-run", is_flag=True)
+@click.option("-q", "--quiet", is_flag=True)
+def report_cmd(bug, feedback, message, dry_run, quiet):
+    """Report a bug or share feedback."""
+    from arc import report as report_module
+
+    root = git.find_repo_root()
+
+    # Determine issue type
+    issue_type = "bug" if bug else ("feedback" if feedback else "bug")
+
+    # Non-TTY requires --message
+    if not sys.stdin.isatty() and not message:
+        err.print("Non-interactive mode requires --message flag.")
+        err.print("Usage: arc report --bug --message \"description\"")
+        sys.exit(5)
+
+    # Get user text (either from --message or editor)
+    if message:
+        user_text = message
+    else:
+        # TTY: open editor
+        template = report_module.collect_env_context() + "\n---\n\nDescribe the issue here..."
+        user_text = _open_editor(template)
+        if not user_text or not user_text.strip():
+            err.print("Aborted: no issue description provided.")
+            sys.exit(1)
+
+    # Format issue body
+    body = report_module.format_issue_body(user_text, error_message=None)
+
+    # Dry-run: print and exit
+    if dry_run:
+        out.print(body)
+        return
+
+    # Create issue
+    title = f"[{issue_type}] User report"
+    result = github.create_issue(title, body)
+
+    if result:
+        if not quiet:
+            err.print(f"Issue #{result['number']} created: {result['html_url']}")
+        out.print(result["html_url"])
+    else:
+        err.print("Failed to create issue.")
+        sys.exit(4)
