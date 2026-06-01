@@ -18,5 +18,5 @@ def test_branch_exists_remote_returns_true():
 
 def test_branch_exists_remote_returns_false():
     """Branch does not exist on remote."""
-    with patch("arc.git._run", return_value=mock_result("", returncode=1)):
+    with patch("arc.git._run", return_value=mock_result("", returncode=0)):
         assert git.branch_exists_remote("test-branch") is False
