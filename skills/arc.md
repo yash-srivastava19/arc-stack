@@ -53,6 +53,8 @@ State is stored in `.arc/state.json` (gitignored). Configuration lives in `.arc/
 | `arc down [N]` | Move N branches toward trunk (default: 1). |
 | `arc top` | Jump to the topmost branch. |
 | `arc bottom` | Jump to the bottommost branch. |
+| `arc report --bug [--message TEXT]` | Report a bug (opens editor in TTY, requires `--message` in non-TTY) |
+| `arc report --feedback [--message TEXT]` | Share feedback or feature request |
 
 ---
 
@@ -211,4 +213,36 @@ arc rebase --abort
 # Branch already exists locally; not yet in the stack
 arc add my-existing-branch -q
 arc status --plain
+```
+
+---
+
+## arc report — Bug and Feedback Reporting
+
+Users report issues in two ways:
+
+**Interactive (TTY):**
+```bash
+arc report --bug    # Opens $EDITOR with environment context prefilled
+arc report --feedback
+```
+
+**Non-interactive (agents, scripts):**
+```bash
+arc report --bug --message "squash-merge detection fails when PR has 0 commits"
+arc report --feedback --message "arc status could show revision numbers"
+```
+
+**Inspect before submitting:**
+```bash
+arc report --bug --message "description" --dry-run
+# Prints issue body, no submission
+```
+
+Issues are created on GitHub with environment context (arc version, Python version, OS). No PII is collected.
+
+**Passive feedback:** Non-blocking hints are printed to stderr after errors and randomly (1-in-5) after successful commands. Disable in `~/.arc/config.toml`:
+```toml
+[feedback]
+enabled = false
 ```
