@@ -712,3 +712,40 @@ def test_bottom_jumps_to_first(tmp_path):
         result = runner.invoke(cli, ["bottom"])
     assert result.exit_code == 0
     mock_co.assert_called_once_with("feat/auth")
+
+
+# ---------------------------------------------------------------------------
+# Task 3: arc report
+# ---------------------------------------------------------------------------
+
+def test_report_bug_non_tty_requires_message():
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value="/tmp"):
+        result = runner.invoke(cli, ["report", "--bug"])
+    assert result.exit_code == 5
+    assert "message" in result.output.lower()
+
+
+def test_report_bug_with_message_non_tty():
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value="/tmp"), \
+         patch("arc.github.create_issue", return_value={"number": 42, "html_url": "https://gh/42"}):
+        result = runner.invoke(cli, ["report", "--bug", "--message", "test bug"])
+    assert result.exit_code == 0
+    assert "42" in result.output
+
+
+def test_report_feedback_with_message():
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value="/tmp"), \
+         patch("arc.github.create_issue", return_value={"number": 43, "html_url": "https://gh/43"}):
+        result = runner.invoke(cli, ["report", "--feedback", "--message", "feature request"])
+    assert result.exit_code == 0
+
+
+def test_report_dry_run_prints_issue():
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value="/tmp"):
+        result = runner.invoke(cli, ["report", "--bug", "--message", "test", "--dry-run"])
+    assert result.exit_code == 0
+    assert "[Environment]" in result.output or "test" in result.output
