@@ -35,6 +35,11 @@ def branch_exists(name: str) -> bool:
     return bool(_run(["git", "branch", "--list", name]).stdout.strip())
 
 
+def branch_exists_remote(name: str) -> bool:
+    result = _run(["git", "branch", "-r", "--list", f"origin/{name}"], check=False)
+    return bool(result.stdout.strip())
+
+
 def create_branch(name: str, from_ref: str = "HEAD") -> None:
     _run(["git", "checkout", "-b", name, from_ref])
 

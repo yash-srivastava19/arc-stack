@@ -221,6 +221,41 @@ def _render_status_tree(status: dict) -> None:
     out.print(tree)
 
 
+def detect_merged_branches(data: dict) -> set[str]:
+    """Find branches in state that are actually merged (PR was merged on GitHub)."""
+    merged = set()
+    for branch in data["branches"]:
+        pr_number = branch.get("pr_number")
+        if pr_number and github.pr_is_merged(pr_number):
+            merged.add(branch["name"])
+    return merged
+
+
+def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = False) -> dict:
+    """Retarget PRs whose base branch was merged, then prune merged branches from state.
+
+    Note: This implementation always retargets to data["base"] (the stack root).
+    This works correctly for bottom-up merges but for non-contiguous merges
+    (e.g., middle branch merged) it may retarget to root instead of the nearest
+    unmerged ancestor. This is acceptable for the MVP; future work can optimize
+    to find the nearest unmerged parent.
+    """
+    for branch in data["branches"]:
+        # Use positional parent derivation (matching ops.parent_branch logic)
+        parent = ops.parent_branch(data, branch["name"])
+        if parent in merged_branches:
+            pr_number = branch.get("pr_number")
+            if pr_number:
+                success = github.update_pr_base(pr_number, data["base"])
+                if success and not quiet:
+                    err.print(f"Retargeted PR #{pr_number} to {data['base']}")
+
+    # Remove merged branches from state to avoid re-detecting them on the next sync
+    for branch_name in merged_branches:
+        data = st.remove_branch(data, branch_name)
+    return data
+
+
 @cli.command("sync")
 @click.option("-n", "--dry-run", is_flag=True)
 @click.option("-q", "--quiet", is_flag=True)
@@ -268,6 +303,13 @@ def sync_cmd(dry_run, quiet, output_json):
                 err.print("Then run 'arc rebase --continue' or 'arc rebase --abort'.")
                 _maybe_print_error_hint(root)
                 sys.exit(3)
+
+        if not dry_run:
+            # Auto-retarget PRs whose base was merged
+            merged_branches = detect_merged_branches(data)
+            if merged_branches:
+                data = retarget_dependent_prs(data, merged_branches, quiet)
+                st.save(root, data)
 
         if not dry_run and not quiet:
             err.print("Stack synced. Run 'arc push' to push to remote.")
