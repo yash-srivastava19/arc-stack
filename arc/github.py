@@ -29,7 +29,7 @@ def create_pr(branch: str, base: str, title: str, body: str, draft: bool = True)
 def get_pr(branch: str) -> dict | None:
     result = _run(
         ["gh", "pr", "view", branch, "--json",
-         "number,url,state,baseRefName,mergedAt"],
+         "number,url,state,baseRefName,mergedAt,isDraft"],
         check=False,
     )
     if result.returncode != 0:
@@ -64,7 +64,15 @@ def update_pr_base(pr_number: int, new_base: str) -> bool:
 
 
 def mark_pr_ready(number: int) -> None:
-    _run(["gh", "pr", "ready", str(number)])
+    result = _run(
+        ["gh", "pr", "view", str(number), "--json", "isDraft"],
+        check=False,
+    )
+    if result.returncode == 0:
+        pr = json.loads(result.stdout)
+        if not pr.get("isDraft", True):
+            return
+    _run(["gh", "pr", "ready", str(number)], check=False)
 
 
 def pr_is_merged(number: int) -> bool:
