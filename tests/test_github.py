@@ -81,10 +81,52 @@ def test_update_pr_body_calls_gh():
 
 
 def test_mark_pr_ready_calls_gh():
+    """Old test: ensure gh pr ready is called when PR is in draft."""
     with patch("arc.github._run") as mock_run:
-        mock_run.return_value = mock_result()
+        # First call: PR is in draft (isDraft=True)
+        # Second call: mark as ready succeeds
+        mock_run.side_effect = [
+            mock_result(json.dumps({"isDraft": True})),
+            mock_result()
+        ]
         github.mark_pr_ready(42)
-    mock_run.assert_called_once_with(["gh", "pr", "ready", "42"])
+
+    # Verify gh pr ready was called (second call)
+    assert mock_run.call_count == 2
+    assert mock_run.call_args_list[1][0] == (["gh", "pr", "ready", "42"],)
+
+
+def test_mark_pr_ready_skips_when_already_ready():
+    """PR is already ready (isDraft=False), should skip gh pr ready call."""
+    with patch("arc.github._run") as mock_run:
+        # First call: check PR status returns isDraft=False
+        mock_run.return_value = mock_result(json.dumps({"isDraft": False}))
+        github.mark_pr_ready(42)
+
+    # Should have called _run once (to check isDraft), not twice
+    mock_run.assert_called_once_with(
+        ["gh", "pr", "view", "42", "--json", "isDraft"],
+        check=False
+    )
+
+
+def test_mark_pr_ready_calls_when_in_draft():
+    """PR is in draft (isDraft=True), should call gh pr ready."""
+    with patch("arc.github._run") as mock_run:
+        # First call: check PR status returns isDraft=True
+        # Second call: mark as ready returns success
+        mock_run.side_effect = [
+            mock_result(json.dumps({"isDraft": True})),
+            mock_result()
+        ]
+        github.mark_pr_ready(42)
+
+    # Should have called _run twice: once to check, once to mark ready
+    assert mock_run.call_count == 2
+    calls = mock_run.call_args_list
+    assert calls[0][0] == (["gh", "pr", "view", "42", "--json", "isDraft"],)
+    assert calls[1][0] == (["gh", "pr", "ready", "42"],)
+    assert calls[1][1] == {"check": False}
 
 
 def test_create_issue_calls_gh_api():
