@@ -158,3 +158,76 @@ def test_create_issue_returns_none_on_nonzero_exit():
         mock_run.return_value = MagicMock(returncode=1, stdout="")
         result = github.create_issue(title="Bug", body="Description")
         assert result is None
+
+
+# VCR Cassette PII Masking Tests
+
+def test_mask_cassette_pii_emails(tmp_path):
+    """Test that email addresses are masked."""
+    from tests.conftest import mask_cassette_pii
+
+    cassette = tmp_path / "test.yaml"
+    cassette.write_text("user: alice@example.com, contact: bob.smith@test.org")
+
+    mask_cassette_pii(str(cassette))
+    content = cassette.read_text()
+
+    assert "<EMAIL>" in content
+    assert "alice@example.com" not in content
+    assert "bob.smith@test.org" not in content
+
+
+def test_mask_cassette_pii_tokens(tmp_path):
+    """Test that GitHub tokens are masked."""
+    from tests.conftest import mask_cassette_pii
+
+    cassette = tmp_path / "test.yaml"
+    cassette.write_text("token: ghp_abc123def456ghi789jkl012mno3456")
+
+    mask_cassette_pii(str(cassette))
+    content = cassette.read_text()
+
+    assert "<GH_TOKEN>" in content
+    assert "ghp_abc123def456ghi789jkl012mno3456" not in content
+
+
+def test_mask_cassette_pii_login(tmp_path):
+    """Test that login names are masked."""
+    from tests.conftest import mask_cassette_pii
+
+    cassette = tmp_path / "test.yaml"
+    cassette.write_text('"login": "yash-srivastava19"')
+
+    mask_cassette_pii(str(cassette))
+    content = cassette.read_text()
+
+    assert "<USERNAME>" in content
+    assert "yash-srivastava19" not in content
+
+
+def test_mask_cassette_pii_user_ids(tmp_path):
+    """Test that user IDs are masked."""
+    from tests.conftest import mask_cassette_pii
+
+    cassette = tmp_path / "test.yaml"
+    cassette.write_text('"id": 123456789')
+
+    mask_cassette_pii(str(cassette))
+    content = cassette.read_text()
+
+    assert "<USER_ID>" in content
+    assert "123456789" not in content
+
+
+def test_mask_cassette_pii_home_paths(tmp_path):
+    """Test that home directory paths are masked."""
+    from tests.conftest import mask_cassette_pii
+
+    cassette = tmp_path / "test.yaml"
+    cassette.write_text("path: /home/yashs/Desktop/repo")
+
+    mask_cassette_pii(str(cassette))
+    content = cassette.read_text()
+
+    assert "<HOME_PATH>" in content
+    assert "/home/yashs/Desktop/repo" not in content
