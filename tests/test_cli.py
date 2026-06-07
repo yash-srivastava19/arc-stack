@@ -289,7 +289,8 @@ def test_status_json(tmp_path):
     assert data["branches"][0]["revision"] == 1
 
 
-def test_status_human_exits_0(tmp_path):
+def test_status_human_exits_0(tmp_path, monkeypatch):
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)  # force human-readable output
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
     with (
@@ -1031,6 +1032,7 @@ def test_status_auto_json_when_piped(arc_root, monkeypatch):
 
 def test_status_no_init_gives_helpful_message(tmp_path, monkeypatch):
     """Running arc status without arc init should suggest arc init, not crash."""
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)  # force human-readable error output
     (tmp_path / ".git").mkdir()
     monkeypatch.chdir(tmp_path)
     from click.testing import CliRunner

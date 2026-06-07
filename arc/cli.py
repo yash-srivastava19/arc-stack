@@ -677,8 +677,10 @@ def amend_cmd(quiet):
 @click.option("--json", "output_json", is_flag=True)
 def drop_cmd(branch, force, dry_run, quiet, output_json):
     """Remove a branch from the stack and restack above it."""
+    if not output_json and not _is_tty():
+        output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _load_state_or_exit(root, output_json=output_json)
     name = st.apply_prefix(data, branch)
     if not st.get_branch(data, name):
         err.print(f"{name!r} is not in the stack.")
