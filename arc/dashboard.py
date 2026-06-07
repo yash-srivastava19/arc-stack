@@ -281,7 +281,6 @@ class DashboardApp(App):
                 except Exception:
                     self.status_message = "Cannot open PR (gh CLI not found)"
                 self.set_timer(3.0, self._clear_status_message)
-                self.set_timer(3.0, self._clear_status_message)
         self.refresh_panels()
 
     def _clear_status_message(self) -> None:
