@@ -233,6 +233,38 @@ def new_cmd(branch, quiet):
         )
 
 
+@cli.command("restack")
+@click.argument("branch", required=False)
+@click.option("-n", "--dry-run", is_flag=True)
+@click.option("-q", "--quiet", is_flag=True)
+def restack_cmd(branch: str | None, dry_run: bool, quiet: bool) -> None:
+    """Restack a single branch onto its stack parent without full sync."""
+    if not _check_setup():
+        sys.exit(6)
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root)
+    target = branch or git.current_branch()
+    names = [b["name"] for b in data["branches"]]
+    if target not in names:
+        err.print(f"Branch {target!r} is not in the stack.")
+        err.print("hint: run arc status to see stack branches", style="dim")
+        sys.exit(5)
+    parent = ops.parent_branch(data, target)
+    if dry_run:
+        if not quiet:
+            err.print(f"Would rebase {target} onto {parent}.")
+        return
+    git.checkout(target)
+    result = git.rebase(parent)
+    if result.returncode != 0:
+        err.print(f"Rebase of {target} onto {parent} failed.")
+        err.print("hint: resolve conflicts then run arc rebase --continue", style="dim")
+        sys.exit(3)
+    if not quiet:
+        err.print(f"✓ {target} rebased onto {parent}.")
+        err.print("hint: run arc push to update remote", style="dim")
+
+
 @cli.command("add")
 @click.argument("branch")
 @click.option("-q", "--quiet", is_flag=True)
