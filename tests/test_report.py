@@ -7,7 +7,7 @@ from arc import report
 def test_collect_env_context_includes_arc_version():
     ctx = report.collect_env_context()
     assert "arc version:" in ctx
-    assert "0.3.0" in ctx
+    assert "0.3.1" in ctx
 
 
 def test_collect_env_context_includes_python_version():
