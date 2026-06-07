@@ -11,7 +11,9 @@ import click
 from rich.console import Console
 from rich.tree import Tree
 
+from arc import conflicts as _conflicts
 from arc import git, github, ops
+from arc import graph as _graph
 from arc import state as st
 
 err = Console(stderr=True)
@@ -402,6 +404,37 @@ def sync_cmd(dry_run, quiet, output_json):
         if not quiet:
             err.print("done.")
 
+        # Squash-merge recovery: detect and remove branches already squash-merged into base
+        squash_merged: set[str] = set()
+        for b in data["branches"]:
+            name = b["name"]
+            if git.branch_exists(name) and git.is_squash_merged(root, name, data["base"]):
+                squash_merged.add(name)
+                if not quiet:
+                    err.print(
+                        f"↓ {name} detected as squash-merged into {data['base']} — removing from stack."
+                    )
+                if not dry_run:
+                    if git.current_branch() == name:
+                        git.checkout(data["base"])
+                    git.delete_branch(name)
+        if squash_merged and not dry_run:
+            data["branches"] = [b for b in data["branches"] if b["name"] not in squash_merged]
+            st.save(root, data)
+
+        # Conflict prediction: warn about adjacent branches that modify the same files
+        if not dry_run and len(data.get("branches", [])) > 1:
+            predicted = _conflicts.predict_conflicts(data, root)
+            if predicted:
+                err.print("⚠  Conflict prediction:", style="yellow")
+                for p in predicted:
+                    shared_str = ", ".join(p["shared_files"])
+                    err.print(
+                        f"   {p['branch']} and {p['parent']} both modify: {shared_str}",
+                        style="yellow",
+                    )
+                err.print("   Proceeding with sync — resolve conflicts if they occur.", style="dim")
+
         plan = ops.rebase_plan(data)
         pre_shas = {}
         if not dry_run:
@@ -569,6 +602,17 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
             out.print_json(_json.dumps({"created": created, "updated": updated}))
         elif not quiet and not dry_run:
             err.print("PRs ready. View your stack with 'arc status'.")
+
+        if not quiet and not dry_run:
+            for b in data["branches"]:
+                if b.get("pr_number"):
+                    s = github.get_pr_status(b["pr_number"])
+                    if s.get("in_merge_queue") and s.get("approved"):
+                        err.print(
+                            f"→ {b['name']} is approved and in merge queue — safe to build on.",
+                            style="dim",
+                        )
+
         if not dry_run:
             _maybe_print_periodic_hint(root)
     except SystemExit:
@@ -895,6 +939,73 @@ def bottom_cmd():
         return
     git.checkout(names[0])
     err.print(f"Switched to {names[0]}.")
+
+
+# ---------------------------------------------------------------------------
+# Task 11: arc stack analyze
+# ---------------------------------------------------------------------------
+
+
+@cli.group("stack")
+def stack_group() -> None:
+    """Stack analysis and intelligence commands."""
+
+
+@stack_group.command("analyze")
+@click.option("--json", "output_json", is_flag=True)
+def stack_analyze_cmd(output_json: bool) -> None:
+    """Show critical path, safe-to-land branches, and blockers."""
+    if not _check_setup():
+        sys.exit(6)
+    root = git.find_repo_root()
+    data = _load_state_or_exit(root, output_json=output_json)
+    if not data.get("branches"):
+        err.print("Stack is empty.")
+        err.print("hint: run arc new <branch> to create your first branch", style="dim")
+        sys.exit(1)
+    statuses: dict[str, dict] = {}
+    for b in data["branches"]:
+        if b.get("pr_number"):
+            statuses[b["name"]] = github.get_pr_status(b["pr_number"])
+        else:
+            statuses[b["name"]] = {
+                "approved": False,
+                "ci_passing": None,
+                "draft": True,
+                "in_merge_queue": False,
+            }
+    analysis = _graph.analyze_stack(data, statuses)
+    if output_json:
+        import json as _j
+
+        out.print_json(
+            _j.dumps(
+                {
+                    "critical_path": analysis.critical_path,
+                    "safe_to_land": analysis.safe_to_land,
+                    "blocked": analysis.blocked,
+                    "in_merge_queue": analysis.in_merge_queue,
+                }
+            )
+        )
+        return
+    out.print(f"\nStack: {data['base']} → {' → '.join(analysis.critical_path)}\n")
+    for b in data["branches"]:
+        name = b["name"]
+        pr = f"PR #{b['pr_number']}" if b.get("pr_number") else "no PR"
+        if name in analysis.safe_to_land:
+            icon, msg = "✅", "ready to land"
+        elif name in analysis.in_merge_queue:
+            icon, msg = "🔀", "in merge queue"
+        elif name in analysis.blocked:
+            icon, msg = "⏳", f"blocked: {analysis.blocked[name]}"
+        else:
+            icon, msg = "○", "no PR yet" if not b.get("pr_number") else "pending"
+        out.print(f"  {icon} {name} ({pr}) — {msg}")
+    if analysis.safe_to_land:
+        out.print(f"\nSAFE TO LAND NOW: {', '.join(analysis.safe_to_land)}")
+    if analysis.blocked:
+        out.print(f"CRITICAL PATH: {' → '.join(analysis.critical_path)}")
 
 
 # ---------------------------------------------------------------------------

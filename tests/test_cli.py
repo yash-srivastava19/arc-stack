@@ -1139,3 +1139,202 @@ def test_restack_rebases_branch_onto_parent(arc_root, monkeypatch):
     result = CliRunner().invoke(cli, ["restack", "feat/b"])
     assert result.exit_code == 0
     assert "feat/a" in rebase_calls
+
+
+# ---------------------------------------------------------------------------
+# Task 9: conflict prediction in arc sync
+# ---------------------------------------------------------------------------
+
+
+def test_sync_warns_on_predicted_conflicts(arc_root, monkeypatch):
+    from arc import conflicts as _c
+    from arc import git as _git
+    from arc.state import save as _save
+
+    monkeypatch.chdir(arc_root)
+    monkeypatch.setattr(_git, "is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_authenticated", lambda: True)
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [
+                {"name": "feat/a", "pr_number": None, "revision": 0},
+                {"name": "feat/b", "pr_number": None, "revision": 0},
+            ],
+        },
+    )
+    monkeypatch.setattr(_git, "fetch", lambda remote="origin": None)
+    monkeypatch.setattr(_git, "current_branch", lambda: "feat/a")
+    monkeypatch.setattr(_git, "branch_exists", lambda b: False)
+    monkeypatch.setattr(_git, "is_squash_merged", lambda root, branch, base: False)
+    monkeypatch.setattr(
+        _c,
+        "predict_conflicts",
+        lambda data, root: [{"branch": "feat/b", "parent": "feat/a", "shared_files": ["api.py"]}],
+    )
+    monkeypatch.setattr(_git, "rebase", lambda onto: type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(_git, "checkout", lambda b: None)
+    monkeypatch.setattr(_git, "is_ancestor", lambda a, b: True)
+    monkeypatch.setattr(_git, "get_sha", lambda ref: "abc")
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["sync"])
+    assert "conflict" in result.output.lower()
+    assert "feat/b" in result.output
+    assert "api.py" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Task 10: squash-merge recovery in arc sync
+# ---------------------------------------------------------------------------
+
+
+def test_sync_detects_squash_merged_branch(arc_root, monkeypatch):
+    from arc import conflicts as _c
+    from arc import git as _git
+    from arc.state import load as _load
+    from arc.state import save as _save
+
+    monkeypatch.chdir(arc_root)
+    monkeypatch.setattr(_git, "is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_authenticated", lambda: True)
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [
+                {"name": "feat/a", "pr_number": 10, "revision": 1},
+                {"name": "feat/b", "pr_number": 11, "revision": 1},
+            ],
+        },
+    )
+    monkeypatch.setattr(_git, "fetch", lambda remote="origin": None)
+    monkeypatch.setattr(_git, "current_branch", lambda: "feat/b")
+    monkeypatch.setattr(_git, "is_squash_merged", lambda root, branch, base: branch == "feat/a")
+    monkeypatch.setattr(_git, "is_ancestor", lambda a, b: True)
+    monkeypatch.setattr(_git, "rebase", lambda onto: type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(_git, "checkout", lambda b: None)
+    monkeypatch.setattr(_git, "branch_exists", lambda b: True)
+    monkeypatch.setattr(_git, "delete_branch", lambda b: None)
+    monkeypatch.setattr(_c, "predict_conflicts", lambda d, r: [])
+    monkeypatch.setattr(_git, "get_sha", lambda ref: "abc")
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["sync", "-q"])
+    assert result.exit_code == 0
+    data = _load(arc_root)
+    branch_names = [b["name"] for b in data["branches"]]
+    assert "feat/a" not in branch_names
+    assert "feat/b" in branch_names
+
+
+# ---------------------------------------------------------------------------
+# Task 11: arc stack analyze + async hints in arc submit
+# ---------------------------------------------------------------------------
+
+
+def test_stack_analyze_shows_safe_to_land(arc_root, monkeypatch):
+    from arc import github as _gh
+    from arc.state import save as _save
+
+    monkeypatch.chdir(arc_root)
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [
+                {"name": "feat/a", "pr_number": 10, "revision": 1},
+                {"name": "feat/b", "pr_number": 11, "revision": 1},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        _gh,
+        "get_pr_status",
+        lambda n: (
+            {"approved": True, "ci_passing": True, "draft": False, "in_merge_queue": False}
+            if n == 10
+            else {"approved": False, "ci_passing": True, "draft": False, "in_merge_queue": False}
+        ),
+    )
+    monkeypatch.setattr("arc.git.is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_authenticated", lambda: True)
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["stack", "analyze"])
+    assert result.exit_code == 0
+    assert "feat/a" in result.output
+    assert "feat/b" in result.output
+
+
+def test_submit_prints_async_hint_when_parent_in_merge_queue(arc_root, monkeypatch):
+    from arc import git as _git
+    from arc import github as _gh
+    from arc.state import save as _save
+
+    monkeypatch.chdir(arc_root)
+    monkeypatch.setattr(_git, "is_installed", lambda: True)
+    monkeypatch.setattr(_gh, "is_installed", lambda: True)
+    monkeypatch.setattr(_gh, "is_authenticated", lambda: True)
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [
+                {"name": "feat/a", "pr_number": 10, "revision": 1},
+                {"name": "feat/b", "pr_number": None, "revision": 0},
+            ],
+        },
+    )
+    monkeypatch.setattr(_git, "current_branch", lambda: "feat/b")
+    monkeypatch.setattr(_git, "get_commit_subject", lambda ref="HEAD": "add feature b")
+    monkeypatch.setattr(_git, "get_commit_body", lambda ref="HEAD": "")
+    monkeypatch.setattr(_git, "force_push", lambda branches, remote="origin": None)
+    monkeypatch.setattr(_git, "branch_exists_remote", lambda b: True)
+    monkeypatch.setattr(_git, "commit_count", lambda base, branch: 1)
+    monkeypatch.setattr(_gh, "get_pr", lambda b: None)
+    monkeypatch.setattr(
+        _gh,
+        "create_pr",
+        lambda branch, base, title, body, draft=True: {
+            "number": 11,
+            "url": "https://github.com/x/y/pull/11",
+        },
+    )
+    monkeypatch.setattr(
+        _gh,
+        "get_pr_status",
+        lambda n: {"approved": True, "ci_passing": True, "draft": False, "in_merge_queue": True},
+    )
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["submit", "--open"])
+    assert "safe to build on" in result.output.lower() or "merge queue" in result.output.lower()
