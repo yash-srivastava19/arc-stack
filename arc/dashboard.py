@@ -106,6 +106,7 @@ from textual.containers import Horizontal
 from textual.widgets import Footer, Static
 from textual.binding import Binding
 from textual import work
+from textual.worker import Worker, WorkerState
 import asyncio
 import subprocess
 
@@ -113,8 +114,8 @@ import subprocess
 class StackTreeWidget(Static):
     """Left panel: Stack tree with status icons."""
 
-    def __init__(self, stack_view: StackView):
-        super().__init__()
+    def __init__(self, stack_view: StackView, id: Optional[str] = None):
+        super().__init__(id=id)
         self.stack_view = stack_view
 
     def render(self) -> str:
@@ -134,8 +135,8 @@ class StackTreeWidget(Static):
 class BranchDetailsWidget(Static):
     """Center panel: Full details for selected branch."""
 
-    def __init__(self, stack_view: StackView):
-        super().__init__()
+    def __init__(self, stack_view: StackView, id: Optional[str] = None):
+        super().__init__(id=id)
         self.stack_view = stack_view
 
     def render(self) -> str:
@@ -173,8 +174,8 @@ class BranchDetailsWidget(Static):
 class ActionsWidget(Static):
     """Right panel: Keyboard shortcuts and status."""
 
-    def __init__(self, stack_view: StackView):
-        super().__init__()
+    def __init__(self, stack_view: StackView, id: Optional[str] = None):
+        super().__init__(id=id)
         self.stack_view = stack_view
 
     def render(self) -> str:
@@ -216,33 +217,60 @@ class DashboardApp(App):
 
     def compose(self) -> ComposeResult:
         """Create three-panel layout."""
+        empty = StackView(base="main", branches=[])
         yield Horizontal(
-            StackTreeWidget(self.stack_view or StackView(base="main", branches=[])),
-            BranchDetailsWidget(self.stack_view or StackView(base="main", branches=[])),
-            ActionsWidget(self.stack_view or StackView(base="main", branches=[])),
+            StackTreeWidget(self.stack_view or empty, id="panel_tree"),
+            BranchDetailsWidget(self.stack_view or empty, id="panel_details"),
+            ActionsWidget(self.stack_view or empty, id="panel_actions"),
             id="main_container",
         )
         yield Static(self.status_message, id="footer")
 
     def on_mount(self) -> None:
         """Initialize and load stack state."""
-        self.load_state()
+        self._load_state_async()
         self.start_polling()
 
     def load_state(self) -> None:
-        """Load current stack state from disk."""
+        """Load current stack state from disk (synchronous, for backward compat)."""
         try:
             self.stack_view = load_stack_view(self.root)
             self.refresh_panels()
         except Exception as e:
             self.status_message = f"Error loading state: {e}"
 
+    @work(thread=True, exit_on_error=False)
+    def _load_state_worker(self) -> Optional[StackView]:
+        """Load state in worker thread (may take time for GitHub API)."""
+        try:
+            return load_stack_view(self.root)
+        except Exception:
+            return None
+
+    def _on_load_complete(self, stack: Optional[StackView]) -> None:
+        """Callback when load finishes (runs on main thread)."""
+        if stack:
+            self.stack_view = stack
+        self.refresh_panels()
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        """Handle worker state changes to collect _load_state_worker results."""
+        if (
+            event.worker.name == "_load_state_worker"
+            and event.state == WorkerState.SUCCESS
+        ):
+            self._on_load_complete(event.worker.result)
+
+    def _load_state_async(self) -> None:
+        """Non-blocking load: dispatches to worker thread, updates UI via callback."""
+        self._load_state_worker()
+
     @work(exclusive=True)
     async def start_polling(self) -> None:
         """Background polling every 10 seconds."""
         while True:
             await asyncio.sleep(10)
-            self.load_state()
+            self._load_state_async()
 
     def action_move_up(self) -> None:
         """Move selection up."""
@@ -283,6 +311,9 @@ class DashboardApp(App):
                 except Exception:
                     self.status_message = "Cannot open PR (gh CLI not found)"
                 self.set_timer(3.0, self._clear_status_message)
+            else:
+                self.status_message = "No PR for this branch — run 'arc push' first"
+                self.set_timer(3.0, self._clear_status_message)
         self.refresh_panels()
 
     def _clear_status_message(self) -> None:
@@ -292,23 +323,30 @@ class DashboardApp(App):
 
     def action_refresh(self) -> None:
         """Force refresh now."""
-        self.load_state()
-        self.status_message = "Refreshed"
+        self.status_message = "Refreshing..."
+        self.refresh_panels()
+        self._load_state_async()
+        self.set_timer(2.0, self._clear_status_message)
 
     def action_quit(self) -> None:
         """Quit dashboard."""
         self.exit()
 
     def run_arc_command(self, cmd: str) -> None:
-        """Run arc command on current branch."""
+        """Run arc command on current branch (non-blocking)."""
         if not self.stack_view or not self.stack_view.current_branch:
             self.status_message = "No branch selected"
+            self.refresh_panels()
             return
 
         branch = self.stack_view.current_branch.name
         self.status_message = f"Running arc {cmd}..."
         self.refresh_panels()
+        self._run_arc_command_worker(cmd, branch)
 
+    @work(thread=True, exit_on_error=False)
+    def _run_arc_command_worker(self, cmd: str, branch: str) -> None:
+        """Worker thread: run arc command without blocking the event loop."""
         try:
             result = subprocess.run(
                 ["arc", cmd, branch],
@@ -318,26 +356,41 @@ class DashboardApp(App):
                 timeout=30,
             )
             if result.returncode == 0:
-                self.status_message = f"✓ {cmd.capitalize()} succeeded"
-                self.load_state()
+                self.call_from_thread(self._on_command_success, cmd)
             else:
                 error = result.stderr[:100] if result.stderr else "unknown error"
-                self.status_message = f"✗ {cmd.capitalize()} failed: {error}"
+                self.call_from_thread(self._on_command_failure, cmd, error)
         except Exception as e:
-            self.status_message = f"✗ Error: {str(e)[:80]}"
+            self.call_from_thread(self._on_command_failure, cmd, str(e)[:80])
 
+    def _on_command_success(self, cmd: str) -> None:
+        """Handle successful arc command (called on main thread)."""
+        self.status_message = f"✓ {cmd.capitalize()} succeeded"
+        self._load_state_async()
+
+    def _on_command_failure(self, cmd: str, error: str) -> None:
+        """Handle failed arc command (called on main thread)."""
+        self.status_message = f"✗ {cmd.capitalize()} failed: {error}"
         self.refresh_panels()
 
     def refresh_panels(self) -> None:
-        """Refresh all panel widgets."""
+        """Refresh all panel widgets by updating their data and repainting."""
         try:
-            container = self.query_one("#main_container", Horizontal)
-            container.remove_children()
-            container.mount(
-                StackTreeWidget(self.stack_view or StackView(base="main", branches=[])),
-                BranchDetailsWidget(self.stack_view or StackView(base="main", branches=[])),
-                ActionsWidget(self.stack_view or StackView(base="main", branches=[])),
-            )
+            empty = StackView(base="main", branches=[])
+            current_view = self.stack_view or empty
+
+            tree_widget = self.query_one("#panel_tree", StackTreeWidget)
+            tree_widget.stack_view = current_view
+            tree_widget.refresh()
+
+            details_widget = self.query_one("#panel_details", BranchDetailsWidget)
+            details_widget.stack_view = current_view
+            details_widget.refresh()
+
+            actions_widget = self.query_one("#panel_actions", ActionsWidget)
+            actions_widget.stack_view = current_view
+            actions_widget.refresh()
+
             self.query_one("#footer", Static).update(self.status_message)
         except Exception:
             pass  # widget tree may not be ready yet
