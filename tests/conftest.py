@@ -107,7 +107,7 @@ def git_repo(tmp_path):
 
 
 @pytest.fixture
-def arc_stack(git_repo, tmp_path):
+def arc_stack(git_repo):
     """A git_repo with arc initialized (real .arc/state.json)."""
     from arc import state as st
 

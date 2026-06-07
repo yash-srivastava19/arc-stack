@@ -46,5 +46,5 @@ markers = [
     "unit: pure logic tests, no I/O",
     "git: requires a real local git repository",
     "api: uses vcrpy cassettes for GitHub API",
-    "e2e: requires Forgejo Docker (skipped in standard CI)",
+    "e2e: requires Forgejo Docker; apply to tests needing a live git server — not used in standard CI",
 ]
