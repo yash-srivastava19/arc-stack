@@ -42,6 +42,14 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
 
+      - name: Generate CHANGELOG with git-cliff
+        run: |
+          pip install git-cliff --quiet
+          git cliff --tag "v${{ inputs.version }}" --unreleased --prepend CHANGELOG.md
+          git add CHANGELOG.md
+          git diff --cached --quiet || git commit -m "docs: update CHANGELOG for v${{ inputs.version }}"
+          git push
+
       - name: Create git tag
         run: |
           git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
