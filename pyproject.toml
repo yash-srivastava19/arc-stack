@@ -21,7 +21,30 @@ dev = [
     "pytest>=7.4",
     "pytest-cov",
     "vcrpy>=8.1.1",
+    "ruff>=0.4",
+    "mypy>=1.10",
 ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["arc"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+markers = [
+    "unit: pure logic tests, no I/O",
+    "git: requires a real local git repository",
+    "api: uses vcrpy cassettes for GitHub API",
+    "e2e: requires Forgejo Docker; apply to tests needing a live git server — not used in standard CI",
+]

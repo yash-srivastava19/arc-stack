@@ -1,5 +1,6 @@
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from arc import github
 
 
@@ -36,8 +37,13 @@ def test_get_pr_returns_none_when_missing():
 
 
 def test_get_pr_returns_data():
-    payload = {"number": 42, "url": "https://gh/42", "state": "OPEN",
-               "baseRefName": "main", "mergedAt": None}
+    payload = {
+        "number": 42,
+        "url": "https://gh/42",
+        "state": "OPEN",
+        "baseRefName": "main",
+        "mergedAt": None,
+    }
     with patch("arc.github._run", return_value=mock_result(json.dumps(payload))):
         result = github.get_pr("feat/auth")
     assert result["number"] == 42
@@ -85,10 +91,7 @@ def test_mark_pr_ready_calls_gh():
     with patch("arc.github._run") as mock_run:
         # First call: PR is in draft (isDraft=True)
         # Second call: mark as ready succeeds
-        mock_run.side_effect = [
-            mock_result(json.dumps({"isDraft": True})),
-            mock_result()
-        ]
+        mock_run.side_effect = [mock_result(json.dumps({"isDraft": True})), mock_result()]
         github.mark_pr_ready(42)
 
     # Verify gh pr ready was called (second call)
@@ -104,10 +107,7 @@ def test_mark_pr_ready_skips_when_already_ready():
         github.mark_pr_ready(42)
 
     # Should have called _run once (to check isDraft), not twice
-    mock_run.assert_called_once_with(
-        ["gh", "pr", "view", "42", "--json", "isDraft"],
-        check=False
-    )
+    mock_run.assert_called_once_with(["gh", "pr", "view", "42", "--json", "isDraft"], check=False)
 
 
 def test_mark_pr_ready_calls_when_in_draft():
@@ -115,10 +115,7 @@ def test_mark_pr_ready_calls_when_in_draft():
     with patch("arc.github._run") as mock_run:
         # First call: check PR status returns isDraft=True
         # Second call: mark as ready returns success
-        mock_run.side_effect = [
-            mock_result(json.dumps({"isDraft": True})),
-            mock_result()
-        ]
+        mock_run.side_effect = [mock_result(json.dumps({"isDraft": True})), mock_result()]
         github.mark_pr_ready(42)
 
     # Should have called _run twice: once to check, once to mark ready
@@ -133,8 +130,7 @@ def test_create_issue_calls_gh_api():
     """Test that create_issue calls gh api and returns parsed result."""
     with patch("arc.github._run") as mock_run:
         mock_run.return_value = MagicMock(
-            returncode=0,
-            stdout='https://github.com/<OWNER>/<REPO>/issues/42\n'
+            returncode=0, stdout="https://github.com/<OWNER>/<REPO>/issues/42\n"
         )
         result = github.create_issue(title="Bug Report", body="Description here")
 
@@ -161,6 +157,7 @@ def test_create_issue_returns_none_on_nonzero_exit():
 
 
 # VCR Cassette PII Masking Tests
+
 
 def test_mask_cassette_pii_emails(tmp_path):
     """Test that email addresses are masked."""

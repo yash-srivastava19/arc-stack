@@ -1,5 +1,6 @@
-from unittest.mock import patch, MagicMock, Mock
 import subprocess
+from unittest.mock import MagicMock, Mock, patch
+
 from arc import git, github
 from arc.cli import detect_merged_branches, retarget_dependent_prs
 
@@ -17,7 +18,9 @@ def test_branch_exists_remote_returns_true():
     with patch("arc.git._run", return_value=mock_result("origin/test-branch\n")) as m:
         assert git.branch_exists_remote("test-branch") is True
         # Verify the correct git command was constructed
-        m.assert_called_once_with(["git", "branch", "-r", "--list", "origin/test-branch"], check=False)
+        m.assert_called_once_with(
+            ["git", "branch", "-r", "--list", "origin/test-branch"], check=False
+        )
 
 
 def test_branch_exists_remote_returns_false():
@@ -25,7 +28,9 @@ def test_branch_exists_remote_returns_false():
     with patch("arc.git._run", return_value=mock_result("", returncode=0)) as m:
         assert git.branch_exists_remote("test-branch") is False
         # Verify the correct git command was constructed
-        m.assert_called_once_with(["git", "branch", "-r", "--list", "origin/test-branch"], check=False)
+        m.assert_called_once_with(
+            ["git", "branch", "-r", "--list", "origin/test-branch"], check=False
+        )
 
 
 def test_update_pr_base_changes_base_branch():
@@ -33,14 +38,11 @@ def test_update_pr_base_changes_base_branch():
     with patch("subprocess.run") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="")
 
-        result = github.update_pr_base(10, "main")
+        github.update_pr_base(10, "main")
 
         # Verify the exact command and all arguments
         mock_run.assert_called_once_with(
-            ["gh", "pr", "edit", "10", "--base", "main"],
-            capture_output=True,
-            text=True,
-            timeout=10
+            ["gh", "pr", "edit", "10", "--base", "main"], capture_output=True, text=True, timeout=10
         )
 
 
@@ -72,7 +74,7 @@ def test_detect_merged_branches_finds_merged_prs():
         "branches": [
             {"name": "feature-1", "pr_number": 1, "revision": 1},
             {"name": "feature-2", "pr_number": 2, "revision": 1},
-        ]
+        ],
     }
 
     with patch("arc.github.pr_is_merged") as mock_merged:
@@ -91,7 +93,7 @@ def test_detect_merged_branches_ignores_unpushed():
         "branches": [
             {"name": "feature-1", "pr_number": None, "revision": 0},
             {"name": "feature-2", "pr_number": 2, "revision": 1},
-        ]
+        ],
     }
 
     with patch("arc.github.pr_is_merged") as mock_merged:
@@ -112,7 +114,7 @@ def test_retarget_dependent_prs_updates_base():
             {"name": "feature-1", "pr_number": 1, "revision": 1},
             {"name": "feature-2", "pr_number": 2, "revision": 1},
             {"name": "feature-3", "pr_number": 3, "revision": 1},
-        ]
+        ],
     }
 
     with patch("arc.github.update_pr_base") as mock_update:
@@ -131,7 +133,7 @@ def test_retarget_dependent_prs_prunes_merged_from_state():
         "branches": [
             {"name": "feature-1", "pr_number": 1, "revision": 1},
             {"name": "feature-2", "pr_number": 2, "revision": 1},
-        ]
+        ],
     }
 
     with patch("arc.github.update_pr_base", return_value=True):
@@ -148,7 +150,7 @@ def test_retarget_dependent_prs_prints_status():
         "branches": [
             {"name": "feature-1", "pr_number": 1, "revision": 1},
             {"name": "feature-2", "pr_number": 2, "revision": 1},
-        ]
+        ],
     }
 
     with patch("arc.github.update_pr_base") as mock_update:

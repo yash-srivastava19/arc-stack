@@ -1,9 +1,12 @@
 from __future__ import annotations
+
 import subprocess
 from pathlib import Path
 
 
-def _run(args: list[str], cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess:
+def _run(
+    args: list[str], cwd: Path | None = None, check: bool = True
+) -> subprocess.CompletedProcess:
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=check)
 
 
@@ -57,7 +60,10 @@ def commit_count(base: str, branch: str) -> int:
 
 
 def is_ancestor(ancestor: str, descendant: str) -> bool:
-    return _run(["git", "merge-base", "--is-ancestor", ancestor, descendant], check=False).returncode == 0
+    return (
+        _run(["git", "merge-base", "--is-ancestor", ancestor, descendant], check=False).returncode
+        == 0
+    )
 
 
 def fetch(remote: str = "origin") -> None:

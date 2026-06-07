@@ -1,7 +1,7 @@
 """Pure functions for collecting environment context and formatting issue bodies."""
 
-import sys
 import platform
+import sys
 from importlib.metadata import version
 
 
@@ -14,12 +14,7 @@ def collect_env_context() -> str:
     py_ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
     os_info = f"{platform.system()} {platform.release()}"
 
-    return (
-        "[Environment]\n"
-        f"arc version: {arc_ver}\n"
-        f"Python version: {py_ver}\n"
-        f"OS: {os_info}\n"
-    )
+    return f"[Environment]\narc version: {arc_ver}\nPython version: {py_ver}\nOS: {os_info}\n"
 
 
 def format_issue_body(
