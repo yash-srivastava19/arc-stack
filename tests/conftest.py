@@ -120,5 +120,5 @@ def arc_stack(git_repo, tmp_path):
         "branches": [],
         "metadata": {},
     }
-    st.save_state(root, data)
+    st.save(root, data)
     return root
