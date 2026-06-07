@@ -29,6 +29,7 @@ State is stored in `.arc/state.json` (gitignored). Configuration lives in `.arc/
 6. **Handle exit code 3 (conflict) explicitly.** After a conflict, resolve it with `arc rebase --continue` or abandon with `arc rebase --abort`.
 7. **`arc submit` creates PRs as draft by default.** Pass `--open` to mark them ready for review.
 8. **Branch order is the stack order.** Index 1 is the branch closest to trunk; the highest index is the tip.
+9. **Run `arc doctor` to diagnose environment issues.** It checks git, gh, authentication, and stack validity in one command.
 
 ---
 
@@ -53,6 +54,9 @@ State is stored in `.arc/state.json` (gitignored). Configuration lives in `.arc/
 | `arc down [N]` | Move N branches toward trunk (default: 1). |
 | `arc top` | Jump to the topmost branch. |
 | `arc bottom` | Jump to the bottommost branch. |
+| `arc restack [BRANCH] [-n] [-q]` | Restack a single branch onto its stack parent without full sync. |
+| `arc stack analyze [--json]` | Show critical path, safe-to-land branches, and blockers. |
+| `arc doctor` | Check environment: git, gh, auth, stack validity. |
 | `arc report --bug [--message TEXT]` | Report a bug (opens editor in TTY, requires `--message` in non-TTY) |
 | `arc report --feedback [--message TEXT]` | Share feedback or feature request |
 
