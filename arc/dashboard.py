@@ -239,7 +239,7 @@ class DashboardApp(App):
         except Exception as e:
             self.status_message = f"Error loading state: {e}"
 
-    @work(thread=True, exit_on_error=False)
+    @work(thread=True, exit_on_error=False, exclusive=True)
     def _load_state_worker(self) -> Optional[StackView]:
         """Load state in worker thread (may take time for GitHub API)."""
         try:
@@ -251,6 +251,9 @@ class DashboardApp(App):
         """Callback when load finishes (runs on main thread)."""
         if stack:
             self.stack_view = stack
+        else:
+            self.status_message = "Error loading stack — check git repo and .arc/state.json"
+            self.set_timer(3.0, self._clear_status_message)
         self.refresh_panels()
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
@@ -301,20 +304,27 @@ class DashboardApp(App):
         self.run_arc_command("restack")
 
     def action_open_pr(self) -> None:
-        """Open current branch's PR in browser."""
-        if self.stack_view and self.stack_view.current_branch:
-            current = self.stack_view.current_branch
-            if current.pr_number:
-                try:
-                    subprocess.run(["gh", "pr", "view", str(current.pr_number), "--web"], cwd=self.root)
-                    self.status_message = f"Opened PR #{current.pr_number} in browser"
-                except Exception:
-                    self.status_message = "Cannot open PR (gh CLI not found)"
-                self.set_timer(3.0, self._clear_status_message)
-            else:
-                self.status_message = "No PR for this branch — run 'arc push' first"
-                self.set_timer(3.0, self._clear_status_message)
+        """Open PR in browser (non-blocking)."""
+        if not self.stack_view or not self.stack_view.current_branch:
+            self.status_message = "No branch selected"
+            return
+
+        current = self.stack_view.current_branch
+        if current.pr_number:
+            self._open_pr_worker(current.pr_number)
+            self.status_message = f"Opening PR #{current.pr_number}..."
+        else:
+            self.status_message = "No PR for this branch — run 'arc push' first"
+            self.set_timer(3.0, self._clear_status_message)
         self.refresh_panels()
+
+    @work(thread=True)
+    def _open_pr_worker(self, pr_number: int) -> None:
+        """Open PR in browser (worker thread)."""
+        try:
+            subprocess.run(["gh", "pr", "view", str(pr_number), "--web"], cwd=self.root, timeout=5)
+        except Exception:
+            pass  # User error or gh not installed — ignore silently
 
     def _clear_status_message(self) -> None:
         """Clear status message after timer fires."""
@@ -348,8 +358,12 @@ class DashboardApp(App):
     def _run_arc_command_worker(self, cmd: str, branch: str) -> None:
         """Worker thread: run arc command without blocking the event loop."""
         try:
+            if cmd in ("land", "restack"):
+                args = ["arc", cmd, branch]
+            else:  # sync, push — operate on current branch; no branch arg
+                args = ["arc", cmd]
             result = subprocess.run(
-                ["arc", cmd, branch],
+                args,
                 cwd=self.root,
                 capture_output=True,
                 text=True,
