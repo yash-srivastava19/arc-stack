@@ -6,7 +6,6 @@ import random
 import subprocess as _subprocess
 import sys
 import tempfile
-from pathlib import Path
 
 import click
 from rich.console import Console
@@ -1339,7 +1338,7 @@ def report_cmd(bug, feedback, message, dry_run, quiet):
 @click.pass_context
 def dashboard_cmd(ctx) -> None:
     """Launch interactive dashboard for stacked PRs."""
-    from arc.dashboard import run_dashboard
     import arc.git as git
+    from arc.dashboard import run_dashboard
     root = git.find_repo_root()
     run_dashboard(root)

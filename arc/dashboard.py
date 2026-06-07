@@ -1,22 +1,32 @@
 from __future__ import annotations
+
+import asyncio
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
-from arc import state as st
+
+from textual import work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal
+from textual.widgets import Static
+from textual.worker import Worker, WorkerState
+
 from arc import github
+from arc import state as st
 
 
 @dataclass
 class BranchStatus:
     """Status of a single branch in the stack."""
     name: str
-    pr_number: Optional[int]
-    ci_passing: Optional[bool]  # None = pending/unknown
+    pr_number: int | None
+    ci_passing: bool | None  # None = pending/unknown
     approved: bool
     draft: bool
     commits: int
     revision: int
-    blocker_reason: Optional[str]  # e.g., "waiting on feat/auth to land"
+    blocker_reason: str | None  # e.g., "waiting on feat/auth to land"
 
     @property
     def status_icon(self) -> str:
@@ -42,7 +52,7 @@ class StackView:
     current_index: int = 0  # selected branch
 
     @property
-    def current_branch(self) -> Optional[BranchStatus]:
+    def current_branch(self) -> BranchStatus | None:
         """Get currently selected branch."""
         if 0 <= self.current_index < len(self.branches):
             return self.branches[self.current_index]
@@ -101,20 +111,10 @@ def load_stack_view(root: Path) -> StackView:
     return StackView(base=data.get("base", "main"), branches=branches)
 
 
-from textual.app import App, ComposeResult
-from textual.containers import Horizontal
-from textual.widgets import Footer, Static
-from textual.binding import Binding
-from textual import work
-from textual.worker import Worker, WorkerState
-import asyncio
-import subprocess
-
-
 class StackTreeWidget(Static):
     """Left panel: Stack tree with status icons."""
 
-    def __init__(self, stack_view: StackView, id: Optional[str] = None):
+    def __init__(self, stack_view: StackView, id: str | None = None):
         super().__init__(id=id)
         self.stack_view = stack_view
 
@@ -135,7 +135,7 @@ class StackTreeWidget(Static):
 class BranchDetailsWidget(Static):
     """Center panel: Full details for selected branch."""
 
-    def __init__(self, stack_view: StackView, id: Optional[str] = None):
+    def __init__(self, stack_view: StackView, id: str | None = None):
         super().__init__(id=id)
         self.stack_view = stack_view
 
@@ -174,7 +174,7 @@ class BranchDetailsWidget(Static):
 class ActionsWidget(Static):
     """Right panel: Keyboard shortcuts and status."""
 
-    def __init__(self, stack_view: StackView, id: Optional[str] = None):
+    def __init__(self, stack_view: StackView, id: str | None = None):
         super().__init__(id=id)
         self.stack_view = stack_view
 
@@ -212,7 +212,7 @@ class DashboardApp(App):
     def __init__(self, root: Path):
         super().__init__()
         self.root = root
-        self.stack_view: Optional[StackView] = None
+        self.stack_view: StackView | None = None
         self.status_message = ""
 
     def compose(self) -> ComposeResult:
@@ -240,14 +240,14 @@ class DashboardApp(App):
             self.status_message = f"Error loading state: {e}"
 
     @work(thread=True, exit_on_error=False, exclusive=True)
-    def _load_state_worker(self) -> Optional[StackView]:
+    def _load_state_worker(self) -> StackView | None:
         """Load state in worker thread (may take time for GitHub API)."""
         try:
             return load_stack_view(self.root)
         except Exception:
             return None
 
-    def _on_load_complete(self, stack: Optional[StackView]) -> None:
+    def _on_load_complete(self, stack: StackView | None) -> None:
         """Callback when load finishes (runs on main thread)."""
         if stack:
             self.stack_view = stack

@@ -1,8 +1,14 @@
-import pytest
 from pathlib import Path
-from dataclasses import dataclass
-from arc.dashboard import BranchStatus, StackView, load_stack_view, StackTreeWidget, BranchDetailsWidget, ActionsWidget
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+from arc.dashboard import (
+    ActionsWidget,
+    BranchDetailsWidget,
+    BranchStatus,
+    StackTreeWidget,
+    StackView,
+    load_stack_view,
+)
 
 
 class TestBranchStatus:
