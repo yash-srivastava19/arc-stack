@@ -33,25 +33,25 @@ class BranchStatus:
     def status_icon(self) -> str:
         """Return icon for branch status."""
         if self.pr_number is None:
-            return "○"  # no PR
+            return "○"
         if self.ci_passing is False:
-            return "✗"  # failing (takes priority over blocked)
+            return "✗"
         if self.blocker_reason:
-            return "⏳"  # blocked/waiting
+            return "⏳"
         if self.ci_passing is None:
-            return "⚙️"  # running/pending
+            return "⚙️"
         if self.approved:
-            return "✅"  # ready to land
-        return "○"  # not ready
+            return "✅"
+        return "○"
 
 
 @dataclass
 class StackView:
     """Model for the entire stack view."""
 
-    base: str  # "main"
+    base: str
     branches: list[BranchStatus]
-    current_index: int = 0  # selected branch
+    current_index: int = 0
 
     @property
     def current_branch(self) -> BranchStatus | None:
@@ -79,7 +79,6 @@ def load_stack_view(root: Path) -> StackView:
         name = branch_dict["name"]
         pr_number = branch_dict.get("pr_number")
 
-        # Fetch GitHub status if PR exists
         blocker_reason = None
         ci_passing = None
         approved = False
@@ -90,13 +89,12 @@ def load_stack_view(root: Path) -> StackView:
             approved = pr_status.get("approved", False)
             draft = pr_status.get("draft", False)
 
-            # Compute blocker reason: CI failure takes priority
             if ci_passing is False:
                 blocker_reason = "CI is failing"
             elif not approved and not draft:
                 blocker_reason = "not yet approved"
         else:
-            draft = True  # no PR = draft
+            draft = True
 
         branch = BranchStatus(
             name=name,
