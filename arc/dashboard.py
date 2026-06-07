@@ -106,7 +106,6 @@ from textual.binding import Binding
 from textual import work
 import asyncio
 import subprocess
-import webbrowser
 
 
 class StackTreeWidget(Static):
@@ -146,6 +145,7 @@ class BranchDetailsWidget(Static):
         if current.pr_number:
             lines.append(f"PR #{current.pr_number}")
         lines.append(f"{current.commits} commits · revision {current.revision}")
+        # TODO(v0.5): show latest commit message here; state.json doesn't store it yet
 
         if current.ci_passing is True:
             lines.append("[green]✓ CI passing[/green]")
@@ -275,9 +275,19 @@ class DashboardApp(App):
         if self.stack_view and self.stack_view.current_branch:
             current = self.stack_view.current_branch
             if current.pr_number:
-                url = f"https://github.com/search?q={current.pr_number}"
-                webbrowser.open(url)
-                self.status_message = f"Opened PR #{current.pr_number}"
+                try:
+                    subprocess.run(["gh", "pr", "view", str(current.pr_number), "--web"], cwd=self.root)
+                    self.status_message = f"Opened PR #{current.pr_number} in browser"
+                except Exception:
+                    self.status_message = "Cannot open PR (gh CLI not found)"
+                self.set_timer(3.0, self._clear_status_message)
+                self.set_timer(3.0, self._clear_status_message)
+        self.refresh_panels()
+
+    def _clear_status_message(self) -> None:
+        """Clear status message after timer fires."""
+        self.status_message = ""
+        self.refresh_panels()
 
     def action_refresh(self) -> None:
         """Force refresh now."""
