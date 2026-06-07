@@ -1327,3 +1327,19 @@ def report_cmd(bug, feedback, message, dry_run, quiet):
     else:
         err.print("Failed to create issue.")
         sys.exit(4)
+
+
+# ---------------------------------------------------------------------------
+# Task 5: arc dashboard
+# ---------------------------------------------------------------------------
+
+
+@cli.command("dashboard")
+@click.pass_context
+def dashboard_cmd(ctx) -> None:
+    """Launch interactive dashboard for stacked PRs."""
+    import arc.git as git
+    from arc.dashboard import run_dashboard
+
+    root = git.find_repo_root()
+    run_dashboard(root)
