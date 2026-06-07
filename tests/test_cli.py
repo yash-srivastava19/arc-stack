@@ -24,7 +24,7 @@ def test_version():
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
-    assert "0.3.1" in result.output
+    assert "0.3.2" in result.output
 
 
 def test_help():

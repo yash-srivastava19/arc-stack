@@ -23,7 +23,7 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 
 @click.group(context_settings=CONTEXT_SETTINGS)
-@click.version_option("0.3.1", prog_name="arc")
+@click.version_option("0.3.2", prog_name="arc")
 @click.option(
     "--no-color", is_flag=True, envvar="NO_COLOR", is_eager=True, help="Disable color output."
 )
