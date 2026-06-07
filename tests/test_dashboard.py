@@ -120,6 +120,12 @@ class TestStackView:
         stack.move_selection(5)
         assert stack.current_index == 0
 
+    def test_move_selection_empty_stack(self):
+        """move_selection on empty stack stays at 0."""
+        stack = StackView(base="main", branches=[], current_index=0)
+        stack.move_selection(1)
+        assert stack.current_index == 0
+
 
 class TestLoadStackView:
     """Tests for load_stack_view function."""
@@ -201,3 +207,37 @@ class TestLoadStackView:
 
         stack = load_stack_view(Path("."))
         assert stack.branches[0].blocker_reason == "not yet approved"
+
+    @patch('arc.dashboard.st.load')
+    def test_load_stack_view_draft_branch(self, mock_load):
+        """load_stack_view handles draft branches (no PR) correctly."""
+        mock_load.return_value = {
+            "base": "main",
+            "branches": [
+                {"name": "feat/wip", "pr_number": None, "commits": 1, "revision": 1}
+            ]
+        }
+
+        stack = load_stack_view(Path("."))
+        assert stack.branches[0].draft is True
+        assert stack.branches[0].blocker_reason is None
+
+    @patch('arc.dashboard.st.load')
+    @patch('arc.dashboard.github.get_pr_status')
+    def test_blocker_priority_ci_over_approval(self, mock_get_pr, mock_load):
+        """When both CI failing and not approved, CI failure takes priority."""
+        mock_load.return_value = {
+            "base": "main",
+            "branches": [
+                {"name": "feat/broken", "pr_number": 1, "commits": 1, "revision": 1}
+            ]
+        }
+        mock_get_pr.return_value = {
+            "ci_passing": False,
+            "approved": False,
+            "draft": False
+        }
+
+        stack = load_stack_view(Path("."))
+        # Should show CI failure, not approval status
+        assert stack.branches[0].blocker_reason == "CI is failing"
