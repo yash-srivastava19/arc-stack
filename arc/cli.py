@@ -1337,8 +1337,9 @@ def report_cmd(bug, feedback, message, dry_run, quiet):
 
 @cli.command("dashboard")
 @click.pass_context
-def dashboard(ctx):
+def dashboard_cmd(ctx) -> None:
     """Launch interactive dashboard for stacked PRs."""
     from arc.dashboard import run_dashboard
-    root = Path(ctx.obj.get("repo_root", "."))
+    import arc.git as git
+    root = git.find_repo_root()
     run_dashboard(root)
