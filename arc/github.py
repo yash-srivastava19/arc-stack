@@ -101,6 +101,32 @@ def get_merge_commit_sha(number: int) -> str | None:
     return commit.get("oid") if commit else None
 
 
+def get_pr_status(pr_number: int) -> dict:
+    result = _run(
+        ["gh", "pr", "view", str(pr_number), "--json",
+         "isDraft,reviewDecision,statusCheckRollup,mergeQueueEntry"],
+        check=False,
+    )
+    if result.returncode != 0:
+        return {"approved": False, "ci_passing": None, "draft": False, "in_merge_queue": False}
+    data = json.loads(result.stdout)
+    checks = data.get("statusCheckRollup") or []
+    if not checks:
+        ci_passing = None
+    elif all(c.get("conclusion") == "SUCCESS" for c in checks):
+        ci_passing = True
+    elif any(c.get("conclusion") in ("FAILURE", "ERROR") for c in checks):
+        ci_passing = False
+    else:
+        ci_passing = None
+    return {
+        "approved": data.get("reviewDecision") == "APPROVED",
+        "ci_passing": ci_passing,
+        "draft": data.get("isDraft", False),
+        "in_merge_queue": bool(data.get("mergeQueueEntry")),
+    }
+
+
 def create_issue(title: str, body: str) -> dict | None:
     """Create a GitHub issue via gh CLI.
 
