@@ -1,5 +1,6 @@
 import os
 import re
+import subprocess as _sp
 
 import pytest
 import vcr as vcrlib
@@ -81,3 +82,43 @@ def record_cassette(vcr_config):
         yield cassette
     if os.path.exists(cassette_path):
         mask_cassette_pii(cassette_path)
+
+
+@pytest.fixture
+def git_repo(tmp_path):
+    """A real local git repo with a bare remote. Suitable for testing arc git operations."""
+    bare = tmp_path / "remote.git"
+    work = tmp_path / "work"
+
+    _sp.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
+    _sp.run(["git", "clone", str(bare), str(work)], check=True, capture_output=True)
+    _sp.run(
+        ["git", "config", "user.email", "test@arc.dev"], cwd=work, check=True, capture_output=True
+    )
+    _sp.run(["git", "config", "user.name", "Arc Test"], cwd=work, check=True, capture_output=True)
+    _sp.run(["git", "checkout", "-b", "main"], cwd=work, check=True, capture_output=True)
+
+    (work / "README.md").write_text("init")
+    _sp.run(["git", "add", "."], cwd=work, check=True, capture_output=True)
+    _sp.run(["git", "commit", "-m", "init"], cwd=work, check=True, capture_output=True)
+    _sp.run(["git", "push", "-u", "origin", "main"], cwd=work, check=True, capture_output=True)
+
+    return work
+
+
+@pytest.fixture
+def arc_stack(git_repo, tmp_path):
+    """A git_repo with arc initialized (real .arc/state.json)."""
+    from arc import state as st
+
+    root = git_repo
+    (root / ".arc").mkdir(exist_ok=True)
+    data = {
+        "version": 1,
+        "base": "main",
+        "prefix": None,
+        "branches": [],
+        "metadata": {},
+    }
+    st.save_state(root, data)
+    return root

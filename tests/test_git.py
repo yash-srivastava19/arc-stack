@@ -97,3 +97,17 @@ def test_find_repo_root(tmp_path):
 def test_find_repo_root_raises(tmp_path):
     with pytest.raises(RuntimeError, match="Not in a git repository"):
         git.find_repo_root(tmp_path)
+
+
+@pytest.mark.git
+def test_git_repo_fixture_has_real_git(git_repo):
+    import subprocess
+
+    result = subprocess.run(
+        ["git", "log", "--oneline"],
+        cwd=git_repo,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0
+    assert "init" in result.stdout
