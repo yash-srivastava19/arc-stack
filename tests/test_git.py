@@ -116,33 +116,55 @@ def test_git_repo_fixture_has_real_git(git_repo):
 @pytest.mark.git
 def test_changed_files_between_returns_modified_files(git_repo):
     import subprocess
-    subprocess.run(["git", "checkout", "-b", "feat/a"], cwd=git_repo, check=True, capture_output=True)
+
+    subprocess.run(
+        ["git", "checkout", "-b", "feat/a"], cwd=git_repo, check=True, capture_output=True
+    )
     (git_repo / "api.py").write_text("def hello(): pass")
     subprocess.run(["git", "add", "."], cwd=git_repo, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "add api"], cwd=git_repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "add api"], cwd=git_repo, check=True, capture_output=True
+    )
     from arc.git import changed_files_between
+
     assert "api.py" in changed_files_between(git_repo, "main", "feat/a")
+
 
 @pytest.mark.git
 def test_is_squash_merged_true_when_changes_in_base(git_repo):
     import subprocess
-    subprocess.run(["git", "checkout", "-b", "feat/a"], cwd=git_repo, check=True, capture_output=True)
+
+    subprocess.run(
+        ["git", "checkout", "-b", "feat/a"], cwd=git_repo, check=True, capture_output=True
+    )
     (git_repo / "api.py").write_text("squashed")
     subprocess.run(["git", "add", "."], cwd=git_repo, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "add api"], cwd=git_repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "add api"], cwd=git_repo, check=True, capture_output=True
+    )
     subprocess.run(["git", "checkout", "main"], cwd=git_repo, check=True, capture_output=True)
     (git_repo / "api.py").write_text("squashed")
     subprocess.run(["git", "add", "."], cwd=git_repo, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "squash feat/a"], cwd=git_repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "squash feat/a"], cwd=git_repo, check=True, capture_output=True
+    )
     from arc.git import is_squash_merged
+
     assert is_squash_merged(git_repo, "feat/a", "main") is True
+
 
 @pytest.mark.git
 def test_is_squash_merged_false_when_unique_commits(git_repo):
     import subprocess
-    subprocess.run(["git", "checkout", "-b", "feat/a"], cwd=git_repo, check=True, capture_output=True)
+
+    subprocess.run(
+        ["git", "checkout", "-b", "feat/a"], cwd=git_repo, check=True, capture_output=True
+    )
     (git_repo / "api.py").write_text("unique")
     subprocess.run(["git", "add", "."], cwd=git_repo, check=True, capture_output=True)
-    subprocess.run(["git", "commit", "-m", "add api"], cwd=git_repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "commit", "-m", "add api"], cwd=git_repo, check=True, capture_output=True
+    )
     from arc.git import is_squash_merged
+
     assert is_squash_merged(git_repo, "feat/a", "main") is False

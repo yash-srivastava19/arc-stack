@@ -103,8 +103,14 @@ def get_merge_commit_sha(number: int) -> str | None:
 
 def get_pr_status(pr_number: int) -> dict:
     result = _run(
-        ["gh", "pr", "view", str(pr_number), "--json",
-         "isDraft,reviewDecision,statusCheckRollup,mergeQueueEntry"],
+        [
+            "gh",
+            "pr",
+            "view",
+            str(pr_number),
+            "--json",
+            "isDraft,reviewDecision,statusCheckRollup,mergeQueueEntry",
+        ],
         check=False,
     )
     if result.returncode != 0:
