@@ -1104,9 +1104,12 @@ def test_doctor_fails_when_gh_not_authenticated(monkeypatch):
 
 
 def test_restack_rebases_branch_onto_parent(arc_root, monkeypatch):
-    from arc import git as _git
+    from arc import git as _git, github as _gh
     from arc.state import save as _save
     monkeypatch.chdir(arc_root)
+    monkeypatch.setattr(_git, "is_installed", lambda: True)
+    monkeypatch.setattr(_gh, "is_installed", lambda: True)
+    monkeypatch.setattr(_gh, "is_authenticated", lambda: True)
     rebase_calls = []
     monkeypatch.setattr(_git, "rebase", lambda onto: rebase_calls.append(onto) or type("R", (), {"returncode": 0})())
     monkeypatch.setattr(_git, "checkout", lambda b: None)
