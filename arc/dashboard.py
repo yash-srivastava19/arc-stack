@@ -21,15 +21,17 @@ class BranchStatus:
     @property
     def status_icon(self) -> str:
         """Return icon for branch status."""
+        if self.pr_number is None:
+            return "○"  # no PR
+        if self.ci_passing is False:
+            return "✗"  # failing (takes priority over blocked)
         if self.blocker_reason:
             return "⏳"  # blocked/waiting
-        if self.ci_passing is False:
-            return "✗"  # failing
         if self.ci_passing is None:
             return "⚙️"  # running/pending
         if self.approved:
             return "✅"  # ready to land
-        return "○"  # no PR or not ready
+        return "○"  # not ready
 
 
 @dataclass
