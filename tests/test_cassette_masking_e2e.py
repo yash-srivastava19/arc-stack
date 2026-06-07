@@ -3,9 +3,11 @@
 Tests the real workflow: VCR records API interaction → fixture auto-masks PII →
 cassette is safe to commit with no credentials exposed.
 """
+
 import re
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 def test_masking_function_applied_to_cassette_before_write(tmp_path):
@@ -41,24 +43,18 @@ def test_masking_function_applied_to_cassette_before_write(tmp_path):
     masked_content = cassette_path.read_text()
 
     # Verify no credentials are exposed
-    assert "ghp_testtoken123456789abcdefghijklmn" not in masked_content, \
-        "Token should be masked"
-    assert "sensitiveusername" not in masked_content, \
-        "Username should be masked"
-    assert "user@company.com" not in masked_content, \
-        "Email should be masked"
-    assert "123456789" not in masked_content, \
-        "User ID should be masked"
+    assert "ghp_testtoken123456789abcdefghijklmn" not in masked_content, "Token should be masked"
+    assert "sensitiveusername" not in masked_content, "Username should be masked"
+    assert "user@company.com" not in masked_content, "Email should be masked"
+    assert "123456789" not in masked_content, "User ID should be masked"
 
     # Verify placeholders are in place
-    assert "<GH_TOKEN>" in masked_content or "<TOKEN>" in masked_content, \
+    assert "<GH_TOKEN>" in masked_content or "<TOKEN>" in masked_content, (
         "Token should be replaced with placeholder"
-    assert "<USERNAME>" in masked_content, \
-        "Username should be replaced with placeholder"
-    assert "<EMAIL>" in masked_content, \
-        "Email should be replaced with placeholder"
-    assert "<USER_ID>" in masked_content, \
-        "User ID should be replaced with placeholder"
+    )
+    assert "<USERNAME>" in masked_content, "Username should be replaced with placeholder"
+    assert "<EMAIL>" in masked_content, "Email should be replaced with placeholder"
+    assert "<USER_ID>" in masked_content, "User ID should be replaced with placeholder"
 
 
 def test_no_unmasked_credentials_in_committed_cassettes():
@@ -74,9 +70,9 @@ def test_no_unmasked_credentials_in_committed_cassettes():
 
     # Patterns that indicate unmasked credentials
     forbidden_patterns = {
-        "GitHub token": r'ghp_[a-zA-Z0-9]{20,}',
-        "OAuth token": r'gh[ou]_[a-zA-Z0-9]{20,}',
-        "Email address": r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+(\.com|\.org|\.net|\.io)',
+        "GitHub token": r"ghp_[a-zA-Z0-9]{20,}",
+        "OAuth token": r"gh[ou]_[a-zA-Z0-9]{20,}",
+        "Email address": r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+(\.com|\.org|\.net|\.io)",
     }
 
     for cassette_file in cassettes_dir.glob("*.yaml"):

@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 from pathlib import Path
 
@@ -71,10 +72,7 @@ def remove_branch(data: dict, name: str) -> dict:
 
 
 def update_branch(data: dict, name: str, **kwargs) -> dict:
-    branches = [
-        {**b, **kwargs} if b["name"] == name else b
-        for b in data["branches"]
-    ]
+    branches = [{**b, **kwargs} if b["name"] == name else b for b in data["branches"]]
     return {**data, "branches": branches}
 
 

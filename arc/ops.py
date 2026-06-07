@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 from arc import state as st
 
 
@@ -14,7 +15,7 @@ def upstack_branches(data: dict, name: str) -> list[str]:
     names = st.branch_names(data)
     if name not in names:
         return []
-    return names[names.index(name) + 1:]
+    return names[names.index(name) + 1 :]
 
 
 def downstack_branches(data: dict, name: str) -> list[str]:
@@ -48,18 +49,20 @@ def stack_status(
     for i, b in enumerate(state["branches"]):
         name = b["name"]
         info = pr_info.get(name, {})
-        branches.append({
-            "name": name,
-            "index": i + 1,
-            "pr_number": b.get("pr_number"),
-            "pr_url": info.get("pr_url"),
-            "pr_state": info.get("pr_state"),
-            "commits": commit_counts.get(name, 0),
-            "revision": b.get("revision", 0),
-            "needs_rebase": needs_rebase_flags.get(name, False),
-            "is_current": name == current_branch,
-            "is_merged": info.get("is_merged", False),
-        })
+        branches.append(
+            {
+                "name": name,
+                "index": i + 1,
+                "pr_number": b.get("pr_number"),
+                "pr_url": info.get("pr_url"),
+                "pr_state": info.get("pr_state"),
+                "commits": commit_counts.get(name, 0),
+                "revision": b.get("revision", 0),
+                "needs_rebase": needs_rebase_flags.get(name, False),
+                "is_current": name == current_branch,
+                "is_merged": info.get("is_merged", False),
+            }
+        )
     return {
         "base": state["base"],
         "prefix": state.get("prefix"),

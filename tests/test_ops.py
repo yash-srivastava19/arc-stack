@@ -1,9 +1,10 @@
-from arc import ops, state as st
+from arc import ops
+from arc import state as st
 
 
 def _make_state(branches=None, base="main", prefix=None):
     s = st.init_state(base=base, prefix=prefix)
-    for name in (branches or []):
+    for name in branches or []:
         s = st.add_branch(s, name)
     return s
 
@@ -21,6 +22,7 @@ def test_parent_branch_returns_previous_for_rest():
 def test_parent_branch_raises_for_unknown():
     s = _make_state(["feat/auth"])
     import pytest
+
     with pytest.raises(ValueError, match="not in stack"):
         ops.parent_branch(s, "feat/unknown")
 
@@ -125,9 +127,7 @@ def test_build_pr_title_humanizes_branch_when_no_subject():
 
 def test_next_step_hint_needs_rebase():
     status = {
-        "branches": [
-            {"name": "feat/api", "needs_rebase": True, "pr_number": None, "revision": 0}
-        ]
+        "branches": [{"name": "feat/api", "needs_rebase": True, "pr_number": None, "revision": 0}]
     }
     hint = ops.next_step_hint(status)
     assert "arc sync" in hint
@@ -135,9 +135,7 @@ def test_next_step_hint_needs_rebase():
 
 def test_next_step_hint_unpushed():
     status = {
-        "branches": [
-            {"name": "feat/auth", "needs_rebase": False, "pr_number": None, "revision": 0}
-        ]
+        "branches": [{"name": "feat/auth", "needs_rebase": False, "pr_number": None, "revision": 0}]
     }
     hint = ops.next_step_hint(status)
     assert "arc push" in hint
@@ -145,9 +143,7 @@ def test_next_step_hint_unpushed():
 
 def test_next_step_hint_no_prs():
     status = {
-        "branches": [
-            {"name": "feat/auth", "needs_rebase": False, "pr_number": None, "revision": 1}
-        ]
+        "branches": [{"name": "feat/auth", "needs_rebase": False, "pr_number": None, "revision": 1}]
     }
     hint = ops.next_step_hint(status)
     assert "arc submit" in hint
@@ -155,9 +151,7 @@ def test_next_step_hint_no_prs():
 
 def test_next_step_hint_all_good():
     status = {
-        "branches": [
-            {"name": "feat/auth", "needs_rebase": False, "pr_number": 42, "revision": 1}
-        ]
+        "branches": [{"name": "feat/auth", "needs_rebase": False, "pr_number": 42, "revision": 1}]
     }
     hint = ops.next_step_hint(status)
     assert hint == ""

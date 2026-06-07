@@ -1,14 +1,18 @@
 from __future__ import annotations
+
 import json as _json
 import os
 import random
 import subprocess as _subprocess
 import sys
 import tempfile
+
 import click
 from rich.console import Console
 from rich.tree import Tree
-from arc import git, github, state as st, ops
+
+from arc import git, github, ops
+from arc import state as st
 
 err = Console(stderr=True)
 out = Console()
@@ -18,14 +22,16 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 @click.group(context_settings=CONTEXT_SETTINGS)
 @click.version_option("0.1.0", prog_name="arc")
-@click.option("--no-color", is_flag=True, envvar="NO_COLOR", is_eager=True,
-              help="Disable color output.")
+@click.option(
+    "--no-color", is_flag=True, envvar="NO_COLOR", is_eager=True, help="Disable color output."
+)
 @click.pass_context
 def cli(ctx, no_color):
     """arc — stacked pull request manager."""
     ctx.ensure_object(dict)
     if no_color:
         import os
+
         os.environ["NO_COLOR"] = "1"
 
 
@@ -140,7 +146,9 @@ def new_cmd(branch, quiet):
     st.save(root, data)
     if not quiet:
         err.print(f"Branch {name} created.")
-        err.print("Commit your changes, then run 'arc new <branch>' to add another or 'arc status' to view your stack.")
+        err.print(
+            "Commit your changes, then run 'arc new <branch>' to add another or 'arc status' to view your stack."
+        )
 
 
 @cli.command("add")
@@ -175,10 +183,7 @@ def status_cmd(output_json, plain, quiet):
     names = st.branch_names(data)
 
     commit_counts = {n: git.commit_count(data["base"], n) for n in names}
-    needs_rebase_flags = {
-        n: not git.is_ancestor(ops.parent_branch(data, n), n)
-        for n in names
-    }
+    needs_rebase_flags = {n: not git.is_ancestor(ops.parent_branch(data, n), n) for n in names}
     pr_info = {}
     for b in data["branches"]:
         if b["pr_number"]:
@@ -342,7 +347,9 @@ def push_cmd(dry_run, quiet, output_json):
             return
         git.force_push(names)
         for name in names:
-            current_rev = st.get_branch(data, name)["revision"]
+            branch_entry = st.get_branch(data, name)
+            assert branch_entry is not None
+            current_rev = branch_entry["revision"]
             data = st.update_branch(data, name, revision=current_rev + 1)
         st.save(root, data)
         if not quiet:
@@ -421,8 +428,14 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
                 github.update_pr_body(pr_number, body)
                 if mark_open:
                     github.mark_pr_ready(pr_number)
-                updated.append({"branch": name, "pr_number": pr_number,
-                                "pr_url": existing.get("url"), "revision": b["revision"]})
+                updated.append(
+                    {
+                        "branch": name,
+                        "pr_number": pr_number,
+                        "pr_url": existing.get("url"),
+                        "revision": b["revision"],
+                    }
+                )
 
         if not dry_run:
             st.save(root, data)
@@ -443,6 +456,7 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
 # ---------------------------------------------------------------------------
 # Task 13: arc land
 # ---------------------------------------------------------------------------
+
 
 @cli.command("land")
 @click.argument("branch", required=False)
@@ -466,6 +480,7 @@ def land_cmd(branch, force, dry_run, keep_branch, quiet, output_json):
         sys.exit(5)
 
     b = st.get_branch(data, target)
+    assert b is not None
     if not b["pr_number"]:
         err.print(f"Branch {target!r} has no PR. Run 'arc submit' first.")
         sys.exit(1)
@@ -516,8 +531,8 @@ def land_cmd(branch, force, dry_run, keep_branch, quiet, output_json):
         st.save(root, data)
 
         if not quiet:
-            n = len(above)
-            err.print(f"{target} landed. {n} branch{'es' if n != 1 else ''} restacked.")
+            n_above = len(above)
+            err.print(f"{target} landed. {n_above} branch{'es' if n_above != 1 else ''} restacked.")
             err.print("Run 'arc status' to see your updated stack.")
     except SystemExit:
         raise
@@ -529,6 +544,7 @@ def land_cmd(branch, force, dry_run, keep_branch, quiet, output_json):
 # ---------------------------------------------------------------------------
 # Task 14: arc amend + arc drop
 # ---------------------------------------------------------------------------
+
 
 @cli.command("amend")
 @click.option("-q", "--quiet", is_flag=True)
@@ -548,6 +564,7 @@ def amend_cmd(quiet):
     pr_url = pr_info.get("url", "") if pr_info else ""
     footer = f"\nArc-PR: {pr_url}\nArc-Stack-Position: {position}"
     import re
+
     if "Arc-PR:" not in existing_msg:
         git.amend_message(existing_msg + footer)
     else:
@@ -606,6 +623,7 @@ def drop_cmd(branch, force, dry_run, quiet, output_json):
 # ---------------------------------------------------------------------------
 # Task 15: arc rebase
 # ---------------------------------------------------------------------------
+
 
 @cli.command("rebase")
 @click.option("--upstack", is_flag=True)
@@ -674,6 +692,7 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
 # ---------------------------------------------------------------------------
 # Task 16: Navigation commands
 # ---------------------------------------------------------------------------
+
 
 @cli.command("checkout")
 @click.argument("target")
@@ -753,6 +772,7 @@ def bottom_cmd():
 # Task 3: arc report
 # ---------------------------------------------------------------------------
 
+
 def _open_editor(template: str) -> str:
     """Open $EDITOR with template, return edited text."""
     editor = os.environ.get("EDITOR", "vi")
@@ -764,7 +784,7 @@ def _open_editor(template: str) -> str:
 
     try:
         _subprocess.run([editor, temp_path], check=False)
-        with open(temp_path, "r") as f:
+        with open(temp_path) as f:
             return f.read()
     finally:
         os.unlink(temp_path)
@@ -780,7 +800,7 @@ def report_cmd(bug, feedback, message, dry_run, quiet):
     """Report a bug or share feedback."""
     from arc import report as report_module
 
-    root = git.find_repo_root()
+    git.find_repo_root()
 
     # Determine issue type
     issue_type = "bug" if bug else ("feedback" if feedback else "bug")
@@ -788,7 +808,7 @@ def report_cmd(bug, feedback, message, dry_run, quiet):
     # Non-TTY requires --message
     if not sys.stdin.isatty() and not message:
         err.print("Non-interactive mode requires --message flag.")
-        err.print("Usage: arc report --bug --message \"description\"")
+        err.print('Usage: arc report --bug --message "description"')
         sys.exit(5)
 
     # Get user text (either from --message or editor)

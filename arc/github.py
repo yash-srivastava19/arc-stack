@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import subprocess
 
@@ -16,8 +17,19 @@ def is_authenticated() -> bool:
 
 
 def create_pr(branch: str, base: str, title: str, body: str, draft: bool = True) -> dict:
-    args = ["gh", "pr", "create", "--base", base, "--head", branch,
-            "--title", title, "--body", body]
+    args = [
+        "gh",
+        "pr",
+        "create",
+        "--base",
+        base,
+        "--head",
+        branch,
+        "--title",
+        title,
+        "--body",
+        body,
+    ]
     if draft:
         args.append("--draft")
     result = _run(args)
@@ -28,8 +40,7 @@ def create_pr(branch: str, base: str, title: str, body: str, draft: bool = True)
 
 def get_pr(branch: str) -> dict | None:
     result = _run(
-        ["gh", "pr", "view", branch, "--json",
-         "number,url,state,baseRefName,mergedAt,isDraft"],
+        ["gh", "pr", "view", branch, "--json", "number,url,state,baseRefName,mergedAt,isDraft"],
         check=False,
     )
     if result.returncode != 0:
@@ -56,7 +67,7 @@ def update_pr_base(pr_number: int, new_base: str) -> bool:
             ["gh", "pr", "edit", str(pr_number), "--base", new_base],
             capture_output=True,
             text=True,
-            timeout=10
+            timeout=10,
         )
         return result.returncode == 0
     except Exception:

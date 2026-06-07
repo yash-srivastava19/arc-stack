@@ -1,6 +1,7 @@
-from unittest.mock import patch, MagicMock
-from pathlib import Path
+from unittest.mock import MagicMock, patch
+
 import pytest
+
 from arc import git
 
 

@@ -1,7 +1,7 @@
 import os
 import re
+
 import pytest
-from pathlib import Path
 import vcr as vcrlib
 
 
@@ -35,13 +35,11 @@ def vcr_config():
 
 def mask_cassette_pii(cassette_path):
     """Mask PII and sensitive data from recorded cassette before committing."""
-    with open(cassette_path, "r") as f:
+    with open(cassette_path) as f:
         content = f.read()
 
     # Mask email addresses (example@domain.com)
-    masked = re.sub(
-        r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", "<EMAIL>", content
-    )
+    masked = re.sub(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}", "<EMAIL>", content)
 
     # Mask home directory paths (/home/username/...)
     masked = re.sub(r"/home/[a-z0-9_/-]+", "<HOME_PATH>", masked)
@@ -61,7 +59,7 @@ def mask_cassette_pii(cassette_path):
     masked = re.sub(r'("login":\s*")[a-zA-Z0-9._-]+"', r'\1<USERNAME>"', masked)
 
     # Mask user IDs (numeric user ids in "id": 123456 with optional trailing chars)
-    masked = re.sub(r'("id":\s*)\d{6,}(?=[,\n}\s]|$)', r'\1<USER_ID>', masked)
+    masked = re.sub(r'("id":\s*)\d{6,}(?=[,\n}\s]|$)', r"\1<USER_ID>", masked)
 
     # Mask repository node IDs (long base64-like strings in "node_id")
     masked = re.sub(r'("node_id":\s*")[A-Za-z0-9+/=]+"', r'\1<NODE_ID>"', masked)
@@ -79,9 +77,7 @@ def record_cassette(vcr_config):
     cassette_dir = "tests/cassettes"
     os.makedirs(cassette_dir, exist_ok=True)
     cassette_path = os.path.join(cassette_dir, "create_issue.yaml")
-    with vcrlib.VCR(**vcr_config).use_cassette(
-        cassette_path, record_mode="once"
-    ) as cassette:
+    with vcrlib.VCR(**vcr_config).use_cassette(cassette_path, record_mode="once") as cassette:
         yield cassette
     if os.path.exists(cassette_path):
         mask_cassette_pii(cassette_path)
