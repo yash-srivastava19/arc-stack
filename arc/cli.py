@@ -74,23 +74,53 @@ def _check_setup() -> bool:
     """Returns True if environment is ready. Prints errors and returns False if not."""
     ok = True
     if not git.is_installed():
-        err.print("git is not installed. Install git and retry.")
+        err.print("git is not installed.")
+        err.print("hint: install git from https://git-scm.com", style="dim")
         ok = False
     if not github.is_installed():
-        err.print("gh is not installed. Install from https://cli.github.com and retry.")
+        err.print("gh is not installed.")
+        err.print("hint: install from https://cli.github.com", style="dim")
         ok = False
     elif not github.is_authenticated():
-        err.print("gh is not authenticated. Run 'gh auth login' then retry.")
+        err.print("gh is not authenticated.")
+        err.print("hint: run gh auth login", style="dim")
         ok = False
     return ok
 
 
-def _load_state_or_exit(root):
+def _is_tty() -> bool:
+    """Return True if stdout is a TTY. Extracted for testability."""
+    return sys.stdout.isatty()
+
+
+def _exit_json_error(
+    message: str, exit_code: int, hint: str = "", output_json: bool = False
+) -> None:
+    if output_json:
+        import json as _j
+
+        out.print_json(
+            _j.dumps({"ok": False, "error": message, "exit_code": exit_code, "hint": hint})
+        )
+    else:
+        err.print(message)
+        if hint:
+            err.print(f"hint: {hint}", style="dim")
+    sys.exit(exit_code)
+
+
+def _load_state_or_exit(root, output_json: bool = False):
     try:
         return st.load(root)
-    except FileNotFoundError as e:
-        err.print(str(e))
-        sys.exit(2)
+    except FileNotFoundError:
+        _exit_json_error(
+            "arc is not initialized in this repo.",
+            exit_code=2,
+            hint="run arc init --base main",
+            output_json=output_json,
+        )
+    except Exception as e:
+        _exit_json_error(str(e), exit_code=2, output_json=output_json)
 
 
 def _update_gitignore(root, entry: str) -> None:
@@ -113,6 +143,58 @@ def setup(quiet):
     if not quiet:
         err.print("git rerere enabled.")
         err.print("Ready. cd into a repo and run 'arc init' to create a stack.")
+
+
+@cli.command("doctor")
+def doctor_cmd() -> None:
+    """Check environment and report what's wrong."""
+    import importlib.metadata
+
+    ok = True
+
+    def check(label: str, passed: bool, fix: str) -> None:
+        nonlocal ok
+        if passed:
+            err.print(f"✓ {label}", style="green")
+        else:
+            err.print(f"✗ {label}", style="red")
+            err.print(f"  fix: {fix}", style="dim")
+            ok = False
+
+    check("git installed", git.is_installed(), "install git from https://git-scm.com")
+
+    gh_ok = github.is_installed()
+    check("gh installed", gh_ok, "install from https://cli.github.com")
+    if gh_ok:
+        check("gh authenticated", github.is_authenticated(), "run gh auth login")
+
+    try:
+        current = importlib.metadata.version("arc-prs")
+    except importlib.metadata.PackageNotFoundError:
+        current = "unknown"
+    err.print(f"✓ arc version {current}", style="green")
+
+    root = None
+    try:
+        root = git.find_repo_root()
+    except RuntimeError:
+        pass
+
+    if root:
+        state_path = root / ".arc" / "state.json"
+        if state_path.exists():
+            try:
+                data = st.load(root)
+                n = len(data.get("branches", []))
+                err.print(f"✓ stack initialized ({n} branches)", style="green")
+            except Exception as e:
+                err.print(f"✗ .arc/state.json is corrupt: {e}", style="red")
+                ok = False
+        else:
+            err.print("  stack not initialized in this repo (run arc init)", style="dim")
+
+    if not ok:
+        sys.exit(1)
 
 
 @cli.command("init")
@@ -160,10 +242,12 @@ def add_cmd(branch, quiet):
     data = _load_state_or_exit(root)
     name = st.apply_prefix(data, branch)
     if not git.branch_exists(name):
-        err.print(f"Branch {name!r} does not exist locally. Create it first.")
+        err.print(f"Branch {name!r} does not exist locally.")
+        err.print(f"hint: git checkout -b {name}", style="dim")
         sys.exit(1)
     if st.get_branch(data, name):
         err.print(f"Branch {name!r} is already in the stack.")
+        err.print("hint: run arc status to see the current stack", style="dim")
         sys.exit(1)
     data = st.add_branch(data, name)
     st.save(root, data)
@@ -177,8 +261,10 @@ def add_cmd(branch, quiet):
 @click.option("-q", "--quiet", is_flag=True)
 def status_cmd(output_json, plain, quiet):
     """Show the current stack."""
+    if not output_json and not _is_tty():
+        output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _load_state_or_exit(root, output_json=output_json)
     current = git.current_branch()
     names = st.branch_names(data)
 
@@ -267,10 +353,13 @@ def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = 
 @click.option("--json", "output_json", is_flag=True)
 def sync_cmd(dry_run, quiet, output_json):
     """Fetch and cascade-rebase the stack."""
+    if not output_json and not _is_tty():
+        output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _load_state_or_exit(root, output_json=output_json)
     if not st.branch_names(data):
-        err.print("Stack is empty. Run 'arc new <branch>' to add a branch.")
+        err.print("Stack is empty.")
+        err.print("hint: run arc new <branch> to create your first branch", style="dim")
         return
 
     try:
@@ -333,8 +422,10 @@ def sync_cmd(dry_run, quiet, output_json):
 @click.option("--json", "output_json", is_flag=True)
 def push_cmd(dry_run, quiet, output_json):
     """Force-push all stack branches to remote."""
+    if not output_json and not _is_tty():
+        output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _load_state_or_exit(root, output_json=output_json)
     names = st.branch_names(data)
     if not names:
         err.print("Stack is empty.")
@@ -380,8 +471,10 @@ def _run_hooks(root, hooks: list[str]) -> None:
 @click.option("--json", "output_json", is_flag=True)
 def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
     """Create or update pull requests for the stack."""
+    if not output_json and not _is_tty():
+        output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _load_state_or_exit(root, output_json=output_json)
     branches = data["branches"]
     if not branches:
         err.print("Stack is empty.")
@@ -467,8 +560,10 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
 @click.option("--json", "output_json", is_flag=True)
 def land_cmd(branch, force, dry_run, keep_branch, quiet, output_json):
     """Land a merged PR and restack branches above it."""
+    if not output_json and not _is_tty():
+        output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _load_state_or_exit(root, output_json=output_json)
     names = st.branch_names(data)
     if not names:
         err.print("Stack is empty.")
