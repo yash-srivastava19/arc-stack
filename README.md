@@ -235,6 +235,7 @@ All commands accept `-q` (`--quiet`) to suppress hints and `-n` (`--dry-run`) wh
 | `arc add <branch>` | Adopt an existing local branch |
 | `arc status [--json\|--plain]` | Show the stack |
 | `arc sync` | Fetch + cascade rebase |
+| `arc restack [<branch>]` | Restack a single branch onto its parent without full sync |
 | `arc push` | Force-push all branches, increment revision |
 | `arc submit [--draft\|--open] [--skip-hooks]` | Create or update PRs |
 | `arc land [<branch>] [-f]` | Land a merged PR, restack above |
@@ -244,6 +245,8 @@ All commands accept `-q` (`--quiet`) to suppress hints and `-n` (`--dry-run`) wh
 | `arc checkout <name\|index>` | Switch to branch by name or position |
 | `arc up [n]` / `arc down [n]` | Move through the stack |
 | `arc top` / `arc bottom` | Jump to ends of the stack |
+| `arc stack analyze [--json]` | Show critical path, safe-to-land branches, and blockers |
+| `arc doctor` | Check environment: git, gh, auth, stack validity |
 
 ---
 
