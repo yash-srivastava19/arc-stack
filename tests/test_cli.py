@@ -1338,3 +1338,71 @@ def test_submit_prints_async_hint_when_parent_in_merge_queue(arc_root, monkeypat
 
     result = CliRunner().invoke(cli, ["submit", "--open"])
     assert "safe to build on" in result.output.lower() or "merge queue" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# arc completions
+# ---------------------------------------------------------------------------
+
+
+def test_completions_prints_script(monkeypatch):
+    import subprocess
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *a, **kw: type("R", (), {"stdout": "complete -F _arc arc\n", "returncode": 0})(),
+    )
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["completions", "bash"])
+    assert result.exit_code == 0
+    assert len(result.output) > 0
+
+
+# ---------------------------------------------------------------------------
+# arc schema
+# ---------------------------------------------------------------------------
+
+
+def test_schema_returns_valid_json(monkeypatch):
+    import json
+
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["schema", "status"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["type"] == "object"
+    assert "branches" in data["properties"]
+
+
+# ---------------------------------------------------------------------------
+# arc config
+# ---------------------------------------------------------------------------
+
+
+def test_config_list_empty(arc_root, monkeypatch):
+    monkeypatch.chdir(arc_root)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["config", "list"])
+    assert result.exit_code == 0
+
+
+def test_config_set_and_get(arc_root, monkeypatch):
+    monkeypatch.chdir(arc_root)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    CliRunner().invoke(cli, ["config", "set", "feedback.enabled", "false"])
+    result = CliRunner().invoke(cli, ["config", "get", "feedback.enabled"])
+    assert result.exit_code == 0
+    assert "False" in result.output
