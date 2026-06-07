@@ -76,11 +76,11 @@ def load_stack_view(root: Path) -> StackView:
             approved = pr_status.get("approved", False)
             draft = pr_status.get("draft", False)
 
-            # Compute blocker reason (simplified)
-            if not approved and not draft:
-                blocker_reason = "not yet approved"
-            elif ci_passing is False:
+            # Compute blocker reason: CI failure takes priority
+            if ci_passing is False:
                 blocker_reason = "CI is failing"
+            elif not approved and not draft:
+                blocker_reason = "not yet approved"
         else:
             draft = True  # no PR = draft
 
