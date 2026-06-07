@@ -3,10 +3,16 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+_VERBOSE = False  # module-level flag set by cli
+
 
 def _run(
     args: list[str], cwd: Path | None = None, check: bool = True
 ) -> subprocess.CompletedProcess:
+    if _VERBOSE:
+        import sys as _sys
+
+        print(f"  git {' '.join(str(a) for a in args[1:])}", file=_sys.stderr)
     return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=check)
 
 

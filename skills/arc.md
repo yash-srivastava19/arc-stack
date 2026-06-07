@@ -138,6 +138,27 @@ Field notes:
 
 ---
 
+## `arc stack analyze --json` schema
+
+```json
+{
+  "critical_path": ["feat/auth", "feat/api"],
+  "safe_to_land": ["feat/auth"],
+  "blocked": {
+    "feat/api": "waiting on feat/auth"
+  },
+  "in_merge_queue": []
+}
+```
+
+Field notes:
+- `critical_path`: full ordered list of branches in landing order.
+- `safe_to_land`: branches that are approved, CI passing, and whose parent is ready.
+- `blocked`: map of branch name → reason string.
+- `in_merge_queue`: branches currently in GitHub merge queue.
+
+---
+
 ## Common agent workflows
 
 ### Bootstrap a new stack

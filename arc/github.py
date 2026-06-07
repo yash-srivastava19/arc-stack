@@ -3,8 +3,14 @@ from __future__ import annotations
 import json
 import subprocess
 
+_VERBOSE = False  # module-level flag set by cli
+
 
 def _run(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
+    if _VERBOSE:
+        import sys as _sys
+
+        print(f"  gh {' '.join(str(a) for a in args[1:])}", file=_sys.stderr)
     return subprocess.run(args, capture_output=True, text=True, check=check)
 
 
