@@ -23,7 +23,7 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 
 @click.group(context_settings=CONTEXT_SETTINGS)
-@click.version_option("0.3.1", prog_name="arc")
+@click.version_option("0.3.2", prog_name="arc")
 @click.option(
     "--no-color", is_flag=True, envvar="NO_COLOR", is_eager=True, help="Disable color output."
 )
@@ -535,6 +535,13 @@ def status_cmd(output_json, plain, quiet):
         return
 
     _render_status_tree(status)
+    if not output_json and not quiet:
+        stale = _stale_pr_bases(data, status)
+        if stale:
+            for name in stale:
+                err.print(
+                    f"⚠  {name} — PR base is stale. Run arc sync to retarget.", style="yellow"
+                )
     if not quiet:
         merged = [b["name"] for b in status.get("branches", []) if b.get("is_merged")]
         if merged:
@@ -543,6 +550,20 @@ def status_cmd(output_json, plain, quiet):
         if hint:
             err.print(f"\n→ {hint}")
     _maybe_print_periodic_hint(root)
+
+
+def _stale_pr_bases(data: dict, status: dict) -> list[str]:
+    """Return branch names whose PR base differs from their expected stack parent."""
+    stale = []
+    branches = data.get("branches", [])
+    for i, b in enumerate(branches):
+        if not b.get("pr_number"):
+            continue
+        expected_base = data["base"] if i == 0 else branches[i - 1]["name"]
+        pr = github.get_pr(b["name"])
+        if pr and pr.get("baseRefName") and pr["baseRefName"] != expected_base:
+            stale.append(b["name"])
+    return stale
 
 
 def _render_status_tree(status: dict) -> None:

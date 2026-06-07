@@ -24,7 +24,7 @@ def test_version():
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
-    assert "0.3.1" in result.output
+    assert "0.3.2" in result.output
 
 
 def test_help():
@@ -1536,3 +1536,68 @@ def test_status_shows_merged_branch_hint(tmp_path, monkeypatch):
     assert result.exit_code == 0
     assert "merged" in result.output.lower()
     assert "arc sync" in result.output
+
+
+# ---------------------------------------------------------------------------
+# v0.3.2: arc status stale PR base warning
+# ---------------------------------------------------------------------------
+
+
+def test_status_warns_on_stale_pr_base(arc_root, monkeypatch):
+    """arc status warns when a branch's PR targets a stale base."""
+    from arc import github as _gh
+    from arc.state import save as _save
+
+    monkeypatch.chdir(arc_root)
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [
+                {"name": "feat/a", "pr_number": 10, "revision": 1},
+                {"name": "feat/b", "pr_number": 11, "revision": 1},
+            ],
+        },
+    )
+    # feat/b should target feat/a but GitHub shows it targeting an old branch
+    monkeypatch.setattr(
+        _gh,
+        "get_pr",
+        lambda b: (
+            {
+                "number": 10,
+                "baseRefName": "main",
+                "state": "OPEN",
+                "isDraft": False,
+                "url": "https://github.com/x/y/pull/10",
+                "mergedAt": None,
+            }
+            if b == "feat/a"
+            else {
+                "number": 11,
+                "baseRefName": "feat/v031-commands",  # stale!
+                "state": "OPEN",
+                "isDraft": False,
+                "url": "https://github.com/x/y/pull/11",
+                "mergedAt": None,
+            }
+        ),
+    )
+    monkeypatch.setattr(_gh, "is_installed", lambda: True)
+    monkeypatch.setattr(_gh, "is_authenticated", lambda: True)
+    from arc import git as _git
+
+    monkeypatch.setattr(_git, "current_branch", lambda: "feat/a")
+    monkeypatch.setattr(_git, "commit_count", lambda base, branch: 1)
+    monkeypatch.setattr(_git, "is_ancestor", lambda a, b: True)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["status"])
+    assert "stale" in result.output.lower() or "retarget" in result.output.lower()
+    assert "feat/b" in result.output
