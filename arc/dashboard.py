@@ -1,6 +1,9 @@
 from __future__ import annotations
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
+from arc import state as st
+from arc import github
 
 
 @dataclass
@@ -48,3 +51,49 @@ class StackView:
         new_index = self.current_index + delta
         if 0 <= new_index < len(self.branches):
             self.current_index = new_index
+
+
+def load_stack_view(root: Path) -> StackView:
+    """Load stack state and GitHub PR status into a StackView model.
+
+    Reads .arc/state.json and fetches PR status for each branch.
+    """
+    data = st.load(root)
+    branches = []
+
+    for branch_dict in data.get("branches", []):
+        name = branch_dict["name"]
+        pr_number = branch_dict.get("pr_number")
+
+        # Fetch GitHub status if PR exists
+        blocker_reason = None
+        ci_passing = None
+        approved = False
+        draft = False
+        if pr_number:
+            pr_status = github.get_pr_status(pr_number)
+            ci_passing = pr_status.get("ci_passing")
+            approved = pr_status.get("approved", False)
+            draft = pr_status.get("draft", False)
+
+            # Compute blocker reason (simplified)
+            if not approved and not draft:
+                blocker_reason = "not yet approved"
+            elif ci_passing is False:
+                blocker_reason = "CI is failing"
+        else:
+            draft = True  # no PR = draft
+
+        branch = BranchStatus(
+            name=name,
+            pr_number=pr_number,
+            ci_passing=ci_passing,
+            approved=approved,
+            draft=draft,
+            commits=branch_dict.get("commits", 0),
+            revision=branch_dict.get("revision", 0),
+            blocker_reason=blocker_reason,
+        )
+        branches.append(branch)
+
+    return StackView(base=data.get("base", "main"), branches=branches)
