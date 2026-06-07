@@ -96,8 +96,9 @@ def force_push(branches: list[str], remote: str = "origin") -> None:
     _run(["git", "push", "--force-with-lease", "--atomic", remote] + branches)
 
 
-def delete_branch(name: str) -> None:
-    _run(["git", "branch", "-d", name])
+def delete_branch(name: str, force: bool = False) -> None:
+    flag = "-D" if force else "-d"
+    _run(["git", "branch", flag, name], check=False)
 
 
 def get_commit_subject(ref: str = "HEAD") -> str:

@@ -24,7 +24,7 @@ def test_version():
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
-    assert "0.3.0" in result.output
+    assert "0.3.1" in result.output
 
 
 def test_help():
@@ -1227,7 +1227,7 @@ def test_sync_detects_squash_merged_branch(arc_root, monkeypatch):
     monkeypatch.setattr(_git, "rebase", lambda onto: type("R", (), {"returncode": 0})())
     monkeypatch.setattr(_git, "checkout", lambda b: None)
     monkeypatch.setattr(_git, "branch_exists", lambda b: True)
-    monkeypatch.setattr(_git, "delete_branch", lambda b: None)
+    monkeypatch.setattr(_git, "delete_branch", lambda b, force=False: None)
     monkeypatch.setattr(_c, "predict_conflicts", lambda d, r: [])
     monkeypatch.setattr(_git, "get_sha", lambda ref: "abc")
     monkeypatch.setattr("arc.cli._is_tty", lambda: True)
