@@ -128,3 +128,17 @@ def conflicted_files() -> list[str]:
             filename = parts[1] if len(parts) > 1 else parts[0]
             files.append(filename)
     return files
+
+
+def changed_files_between(root: Path, from_ref: str, to_ref: str) -> list[str]:
+    result = _run(["git", "diff", "--name-only", f"{from_ref}..{to_ref}"], cwd=root, check=False)
+    if result.returncode != 0:
+        return []
+    return [f for f in result.stdout.strip().splitlines() if f]
+
+
+def is_squash_merged(root: Path, branch: str, base: str) -> bool:
+    result = _run(["git", "cherry", "-v", base, branch], cwd=root, check=False)
+    if result.returncode != 0:
+        return False
+    return not any(line.startswith("+") for line in result.stdout.splitlines())

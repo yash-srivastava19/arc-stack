@@ -1105,21 +1105,37 @@ def test_doctor_fails_when_gh_not_authenticated(monkeypatch):
 
 def test_restack_rebases_branch_onto_parent(arc_root, monkeypatch):
     from arc import git as _git
+    from arc import github as _gh
     from arc.state import save as _save
+
     monkeypatch.chdir(arc_root)
+    monkeypatch.setattr(_git, "is_installed", lambda: True)
+    monkeypatch.setattr(_gh, "is_installed", lambda: True)
+    monkeypatch.setattr(_gh, "is_authenticated", lambda: True)
     rebase_calls = []
-    monkeypatch.setattr(_git, "rebase", lambda onto: rebase_calls.append(onto) or type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(
+        _git, "rebase", lambda onto: rebase_calls.append(onto) or type("R", (), {"returncode": 0})()
+    )
     monkeypatch.setattr(_git, "checkout", lambda b: None)
     monkeypatch.setattr(_git, "current_branch", lambda: "feat/b")
     monkeypatch.setattr("arc.cli._is_tty", lambda: True)
-    _save(arc_root, {
-        "version": 1, "base": "main", "prefix": None, "metadata": {},
-        "branches": [{"name": "feat/a", "pr_number": None, "revision": 0},
-                     {"name": "feat/b", "pr_number": None, "revision": 0}],
-    })
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [
+                {"name": "feat/a", "pr_number": None, "revision": 0},
+                {"name": "feat/b", "pr_number": None, "revision": 0},
+            ],
+        },
+    )
     from click.testing import CliRunner
 
     from arc.cli import cli
+
     result = CliRunner().invoke(cli, ["restack", "feat/b"])
     assert result.exit_code == 0
     assert "feat/a" in rebase_calls

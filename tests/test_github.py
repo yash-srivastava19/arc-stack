@@ -156,6 +156,45 @@ def test_create_issue_returns_none_on_nonzero_exit():
         assert result is None
 
 
+def test_get_pr_status_parses_approved_and_ci(monkeypatch):
+    import json as _json
+    import subprocess
+
+    payload = {
+        "isDraft": False,
+        "reviewDecision": "APPROVED",
+        "statusCheckRollup": [{"conclusion": "SUCCESS"}],
+        "mergeQueueEntry": {"position": 1},
+    }
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *a, **kw: type(
+            "R", (), {"returncode": 0, "stdout": _json.dumps(payload), "stderr": ""}
+        )(),
+    )
+    from arc.github import get_pr_status
+
+    s = get_pr_status(42)
+    assert s["approved"] is True
+    assert s["ci_passing"] is True
+    assert s["in_merge_queue"] is True
+
+
+def test_get_pr_status_safe_defaults_on_failure(monkeypatch):
+    import subprocess
+
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *a, **kw: type("R", (), {"returncode": 1, "stdout": "", "stderr": ""})(),
+    )
+    from arc.github import get_pr_status
+
+    s = get_pr_status(42)
+    assert s == {"approved": False, "ci_passing": None, "draft": False, "in_merge_queue": False}
+
+
 # VCR Cassette PII Masking Tests
 
 
