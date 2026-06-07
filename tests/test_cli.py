@@ -1406,3 +1406,133 @@ def test_config_set_and_get(arc_root, monkeypatch):
     result = CliRunner().invoke(cli, ["config", "get", "feedback.enabled"])
     assert result.exit_code == 0
     assert "False" in result.output
+
+
+# ---------------------------------------------------------------------------
+# v0.3.1: --no-input global flag
+# ---------------------------------------------------------------------------
+
+
+def test_no_input_flag_exits_instead_of_prompting(arc_root, monkeypatch):
+    """arc --no-input land exits 1 instead of prompting when --force not passed."""
+    from arc import git as _git
+    from arc import github as _gh
+    from arc.state import save as _save
+
+    monkeypatch.chdir(arc_root)
+    monkeypatch.setattr(_git, "is_installed", lambda: True)
+    monkeypatch.setattr(_gh, "is_installed", lambda: True)
+    monkeypatch.setattr(_gh, "is_authenticated", lambda: True)
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [{"name": "feat/a", "pr_number": 10, "revision": 1}],
+        },
+    )
+    monkeypatch.setattr(_git, "current_branch", lambda: "feat/a")
+    monkeypatch.setattr(_gh, "pr_is_merged", lambda n: True)
+    monkeypatch.setattr(_gh, "get_merge_commit_sha", lambda n: None)
+    monkeypatch.setattr(_git, "get_sha", lambda ref: "abc1234")
+    monkeypatch.setattr(_git, "is_ancestor", lambda a, d: True)
+
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["--no-input", "land"])
+    assert result.exit_code == 1
+    assert "force" in result.output.lower() or "confirm" in result.output.lower()
+
+
+def test_no_input_flag_drop_exits_instead_of_prompting(arc_root, monkeypatch):
+    """arc --no-input drop exits 1 instead of prompting when --force not passed."""
+    from arc.state import save as _save
+
+    monkeypatch.chdir(arc_root)
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [{"name": "feat/a", "pr_number": None, "revision": 0}],
+        },
+    )
+
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["--no-input", "drop", "feat/a"])
+    assert result.exit_code == 1
+    assert "force" in result.output.lower() or "confirm" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# v0.3.1: --verbose global flag
+# ---------------------------------------------------------------------------
+
+
+def test_verbose_flag_prints_git_commands(arc_root, monkeypatch):
+    """arc --verbose status --plain exits 0 without crash."""
+    from arc import git as _git
+    from arc.state import save as _save
+
+    monkeypatch.chdir(arc_root)
+    monkeypatch.setattr(_git, "current_branch", lambda: "main")
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [],
+        },
+    )
+
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["--verbose", "status", "--plain"])
+    # verbose output goes to stderr — just verify exit 0 and no crash
+    assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# v0.3.1: arc status merged-PR hint
+# ---------------------------------------------------------------------------
+
+
+def test_status_shows_merged_branch_hint(tmp_path, monkeypatch):
+    """arc status shows a hint when a branch is merged."""
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    _write_state(
+        tmp_path,
+        branches=[
+            {"name": "feat/auth", "pr_number": 42, "revision": 1},
+        ],
+    )
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.commit_count", return_value=1),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch(
+            "arc.github.get_pr",
+            return_value={"url": "https://github.com/o/r/pull/42", "state": "MERGED"},
+        ),
+    ):
+        result = runner.invoke(cli, ["status"])
+    assert result.exit_code == 0
+    assert "merged" in result.output.lower()
+    assert "arc sync" in result.output

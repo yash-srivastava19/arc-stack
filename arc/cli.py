@@ -27,10 +27,32 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 @click.option(
     "--no-color", is_flag=True, envvar="NO_COLOR", is_eager=True, help="Disable color output."
 )
+@click.option(
+    "--no-input",
+    is_flag=True,
+    envvar="ARC_NO_INPUT",
+    default=False,
+    help="Never prompt; fail fast instead of waiting for confirmation.",
+)
+@click.option(
+    "--verbose",
+    "-v",
+    is_flag=True,
+    default=False,
+    help="Print git and gh commands as they run.",
+)
 @click.pass_context
-def cli(ctx, no_color):
+def cli(ctx, no_color, no_input, verbose):
     """arc — stacked pull request manager."""
     ctx.ensure_object(dict)
+    ctx.obj["no_input"] = no_input
+    ctx.obj["verbose"] = verbose
+    if verbose:
+        from arc import git as _git
+        from arc import github as _gh
+
+        _git._VERBOSE = True
+        _gh._VERBOSE = True
     if no_color:
         import os
 
@@ -514,6 +536,9 @@ def status_cmd(output_json, plain, quiet):
 
     _render_status_tree(status)
     if not quiet:
+        merged = [b["name"] for b in status.get("branches", []) if b.get("is_merged")]
+        if merged:
+            err.print(f"→ {', '.join(merged)} merged — run arc sync to clean up", style="dim")
         hint = ops.next_step_hint(status)
         if hint:
             err.print(f"\n→ {hint}")
@@ -821,7 +846,8 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
 @click.option("--keep-branch", is_flag=True)
 @click.option("-q", "--quiet", is_flag=True)
 @click.option("--json", "output_json", is_flag=True)
-def land_cmd(branch, force, dry_run, keep_branch, quiet, output_json):
+@click.pass_context
+def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
     """Land a merged PR and restack branches above it."""
     if not output_json and not _is_tty():
         output_json = True
@@ -859,8 +885,12 @@ def land_cmd(branch, force, dry_run, keep_branch, quiet, output_json):
             err.print(f"\\[dry-run] rebase {ab} onto {parent}")
         return
 
-    if not force and sys.stdin.isatty():
-        click.confirm(f"Delete local branch {target!r}?", abort=True)
+    if not force and not dry_run:
+        if ctx.obj.get("no_input"):
+            err.print("Requires confirmation. Pass --force to proceed without prompting.")
+            sys.exit(1)
+        if sys.stdin.isatty():
+            click.confirm(f"Delete local branch {target!r}?", abort=True)
 
     try:
         pre_shas = {n: git.get_sha(n) for n in above}
@@ -938,7 +968,8 @@ def amend_cmd(quiet):
 @click.option("-n", "--dry-run", is_flag=True)
 @click.option("-q", "--quiet", is_flag=True)
 @click.option("--json", "output_json", is_flag=True)
-def drop_cmd(branch, force, dry_run, quiet, output_json):
+@click.pass_context
+def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
     """Remove a branch from the stack and restack above it."""
     if not output_json and not _is_tty():
         output_json = True
@@ -949,6 +980,9 @@ def drop_cmd(branch, force, dry_run, quiet, output_json):
         err.print(f"{name!r} is not in the stack.")
         sys.exit(5)
     if not force and not dry_run:
+        if ctx.obj.get("no_input"):
+            err.print("Requires confirmation. Pass --force to proceed without prompting.")
+            sys.exit(1)
         if not sys.stdin.isatty():
             err.print(f"Use --force to drop {name!r} non-interactively.")
             sys.exit(5)
