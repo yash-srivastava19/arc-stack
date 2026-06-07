@@ -19,6 +19,7 @@ from arc import state as st
 @dataclass
 class BranchStatus:
     """Status of a single branch in the stack."""
+
     name: str
     pr_number: int | None
     ci_passing: bool | None  # None = pending/unknown
@@ -47,6 +48,7 @@ class BranchStatus:
 @dataclass
 class StackView:
     """Model for the entire stack view."""
+
     base: str  # "main"
     branches: list[BranchStatus]
     current_index: int = 0  # selected branch
@@ -258,10 +260,7 @@ class DashboardApp(App):
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         """Handle worker state changes to collect _load_state_worker results."""
-        if (
-            event.worker.name == "_load_state_worker"
-            and event.state == WorkerState.SUCCESS
-        ):
+        if event.worker.name == "_load_state_worker" and event.state == WorkerState.SUCCESS:
             self._on_load_complete(event.worker.result)
 
     def _load_state_async(self) -> None:

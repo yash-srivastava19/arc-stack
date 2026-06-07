@@ -24,7 +24,7 @@ class TestBranchStatus:
             draft=False,
             commits=1,
             revision=1,
-            blocker_reason=None
+            blocker_reason=None,
         )
         assert branch.status_icon == "✅"
 
@@ -38,7 +38,7 @@ class TestBranchStatus:
             draft=False,
             commits=1,
             revision=1,
-            blocker_reason="not yet approved"
+            blocker_reason="not yet approved",
         )
         assert branch.status_icon == "⏳"
 
@@ -52,7 +52,7 @@ class TestBranchStatus:
             draft=False,
             commits=1,
             revision=1,
-            blocker_reason=None
+            blocker_reason=None,
         )
         assert branch.status_icon == "⚙️"
 
@@ -66,7 +66,7 @@ class TestBranchStatus:
             draft=False,
             commits=1,
             revision=1,
-            blocker_reason="CI is failing"
+            blocker_reason="CI is failing",
         )
         assert branch.status_icon == "✗"
 
@@ -80,7 +80,7 @@ class TestBranchStatus:
             draft=True,
             commits=2,
             revision=1,
-            blocker_reason=None
+            blocker_reason=None,
         )
         assert branch.status_icon == "○"
 
@@ -136,21 +136,15 @@ class TestStackView:
 class TestLoadStackView:
     """Tests for load_stack_view function."""
 
-    @patch('arc.dashboard.st.load')
-    @patch('arc.dashboard.github.get_pr_status')
+    @patch("arc.dashboard.st.load")
+    @patch("arc.dashboard.github.get_pr_status")
     def test_load_stack_view_with_pr(self, mock_get_pr, mock_load):
         """load_stack_view loads branches and PR status."""
         mock_load.return_value = {
             "base": "main",
-            "branches": [
-                {"name": "feat/auth", "pr_number": 1, "commits": 2, "revision": 1}
-            ]
+            "branches": [{"name": "feat/auth", "pr_number": 1, "commits": 2, "revision": 1}],
         }
-        mock_get_pr.return_value = {
-            "ci_passing": True,
-            "approved": True,
-            "draft": False
-        }
+        mock_get_pr.return_value = {"ci_passing": True, "approved": True, "draft": False}
 
         stack = load_stack_view(Path("."))
 
@@ -161,14 +155,12 @@ class TestLoadStackView:
         assert stack.branches[0].ci_passing is True
         assert stack.branches[0].approved is True
 
-    @patch('arc.dashboard.st.load')
+    @patch("arc.dashboard.st.load")
     def test_load_stack_view_no_pr(self, mock_load):
         """load_stack_view marks branches without PR as draft."""
         mock_load.return_value = {
             "base": "main",
-            "branches": [
-                {"name": "feat/draft", "pr_number": None, "commits": 1, "revision": 1}
-            ]
+            "branches": [{"name": "feat/draft", "pr_number": None, "commits": 1, "revision": 1}],
         }
 
         stack = load_stack_view(Path("."))
@@ -176,73 +168,53 @@ class TestLoadStackView:
         assert stack.branches[0].draft is True
         assert stack.branches[0].pr_number is None
 
-    @patch('arc.dashboard.st.load')
-    @patch('arc.dashboard.github.get_pr_status')
+    @patch("arc.dashboard.st.load")
+    @patch("arc.dashboard.github.get_pr_status")
     def test_blocker_reason_ci_failing(self, mock_get_pr, mock_load):
         """load_stack_view sets blocker when CI is failing."""
         mock_load.return_value = {
             "base": "main",
-            "branches": [
-                {"name": "feat/broken", "pr_number": 1, "commits": 1, "revision": 1}
-            ]
+            "branches": [{"name": "feat/broken", "pr_number": 1, "commits": 1, "revision": 1}],
         }
-        mock_get_pr.return_value = {
-            "ci_passing": False,
-            "approved": False,
-            "draft": False
-        }
+        mock_get_pr.return_value = {"ci_passing": False, "approved": False, "draft": False}
 
         stack = load_stack_view(Path("."))
         assert stack.branches[0].blocker_reason == "CI is failing"
 
-    @patch('arc.dashboard.st.load')
-    @patch('arc.dashboard.github.get_pr_status')
+    @patch("arc.dashboard.st.load")
+    @patch("arc.dashboard.github.get_pr_status")
     def test_blocker_reason_not_approved(self, mock_get_pr, mock_load):
         """load_stack_view sets blocker when not approved."""
         mock_load.return_value = {
             "base": "main",
-            "branches": [
-                {"name": "feat/pending", "pr_number": 1, "commits": 1, "revision": 1}
-            ]
+            "branches": [{"name": "feat/pending", "pr_number": 1, "commits": 1, "revision": 1}],
         }
-        mock_get_pr.return_value = {
-            "ci_passing": True,
-            "approved": False,
-            "draft": False
-        }
+        mock_get_pr.return_value = {"ci_passing": True, "approved": False, "draft": False}
 
         stack = load_stack_view(Path("."))
         assert stack.branches[0].blocker_reason == "not yet approved"
 
-    @patch('arc.dashboard.st.load')
+    @patch("arc.dashboard.st.load")
     def test_load_stack_view_draft_branch(self, mock_load):
         """load_stack_view handles draft branches (no PR) correctly."""
         mock_load.return_value = {
             "base": "main",
-            "branches": [
-                {"name": "feat/wip", "pr_number": None, "commits": 1, "revision": 1}
-            ]
+            "branches": [{"name": "feat/wip", "pr_number": None, "commits": 1, "revision": 1}],
         }
 
         stack = load_stack_view(Path("."))
         assert stack.branches[0].draft is True
         assert stack.branches[0].blocker_reason is None
 
-    @patch('arc.dashboard.st.load')
-    @patch('arc.dashboard.github.get_pr_status')
+    @patch("arc.dashboard.st.load")
+    @patch("arc.dashboard.github.get_pr_status")
     def test_blocker_priority_ci_over_approval(self, mock_get_pr, mock_load):
         """When both CI failing and not approved, CI failure takes priority."""
         mock_load.return_value = {
             "base": "main",
-            "branches": [
-                {"name": "feat/broken", "pr_number": 1, "commits": 1, "revision": 1}
-            ]
+            "branches": [{"name": "feat/broken", "pr_number": 1, "commits": 1, "revision": 1}],
         }
-        mock_get_pr.return_value = {
-            "ci_passing": False,
-            "approved": False,
-            "draft": False
-        }
+        mock_get_pr.return_value = {"ci_passing": False, "approved": False, "draft": False}
 
         stack = load_stack_view(Path("."))
         # Should show CI failure, not approval status
@@ -252,8 +224,8 @@ class TestLoadStackView:
 class TestDashboardIntegration:
     """Integration tests for full dashboard workflow."""
 
-    @patch('arc.dashboard.st.load')
-    @patch('arc.dashboard.github.get_pr_status')
+    @patch("arc.dashboard.st.load")
+    @patch("arc.dashboard.github.get_pr_status")
     def test_full_dashboard_workflow(self, mock_get_pr, mock_load):
         """Full workflow: load stack, fetch PR status, render widgets."""
         # Setup mock data
@@ -262,8 +234,8 @@ class TestDashboardIntegration:
             "branches": [
                 {"name": "feat/auth", "pr_number": 1, "commits": 2, "revision": 1},
                 {"name": "feat/api", "pr_number": 2, "commits": 1, "revision": 2},
-                {"name": "feat/ui", "pr_number": None, "commits": 1, "revision": 1}
-            ]
+                {"name": "feat/ui", "pr_number": None, "commits": 1, "revision": 1},
+            ],
         }
 
         mock_get_pr.side_effect = [
@@ -292,21 +264,15 @@ class TestDashboardIntegration:
         assert stack.branches[2].status_icon == "○"  # no PR
         assert stack.branches[2].draft is True
 
-    @patch('arc.dashboard.st.load')
-    @patch('arc.dashboard.github.get_pr_status')
+    @patch("arc.dashboard.st.load")
+    @patch("arc.dashboard.github.get_pr_status")
     def test_widget_rendering_with_data(self, mock_get_pr, mock_load):
         """Widgets render correctly with populated stack."""
         mock_load.return_value = {
             "base": "main",
-            "branches": [
-                {"name": "feat/auth", "pr_number": 1, "commits": 2, "revision": 1}
-            ]
+            "branches": [{"name": "feat/auth", "pr_number": 1, "commits": 2, "revision": 1}],
         }
-        mock_get_pr.return_value = {
-            "ci_passing": True,
-            "approved": True,
-            "draft": False
-        }
+        mock_get_pr.return_value = {"ci_passing": True, "approved": True, "draft": False}
 
         stack = load_stack_view(Path("."))
 

@@ -1340,5 +1340,6 @@ def dashboard_cmd(ctx) -> None:
     """Launch interactive dashboard for stacked PRs."""
     import arc.git as git
     from arc.dashboard import run_dashboard
+
     root = git.find_repo_root()
     run_dashboard(root)
