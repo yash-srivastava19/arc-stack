@@ -37,7 +37,7 @@ class StackView:
     current_index: int = 0  # selected branch
 
     @property
-    def current_branch(self) -> BranchStatus:
+    def current_branch(self) -> Optional[BranchStatus]:
         """Get currently selected branch."""
         if 0 <= self.current_index < len(self.branches):
             return self.branches[self.current_index]
