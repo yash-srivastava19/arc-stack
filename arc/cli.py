@@ -655,6 +655,10 @@ def sync_cmd(dry_run, quiet, output_json):
             merged_branches = detect_merged_branches(data)
             if merged_branches:
                 data = retarget_dependent_prs(data, merged_branches, quiet)
+                for name in merged_branches:
+                    if not quiet:
+                        err.print(f"↓ {name} is merged — removed from stack.")
+                data["branches"] = [b for b in data["branches"] if b["name"] not in merged_branches]
                 st.save(root, data)
 
         if not dry_run and not quiet:

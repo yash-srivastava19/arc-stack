@@ -163,3 +163,55 @@ def test_retarget_dependent_prs_prints_status():
             mock_print.assert_called_once()
             call_args = mock_print.call_args[0][0]
             assert "Retargeted PR #2 to main" in call_args
+
+
+def test_sync_prunes_merged_branch_from_stack(arc_root, monkeypatch):
+    """arc sync removes merged branches from stack state automatically."""
+    from arc import git as _git
+    from arc.state import load as _load
+    from arc.state import save as _save
+
+    monkeypatch.chdir(arc_root)
+    monkeypatch.setattr(_git, "is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_authenticated", lambda: True)
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [
+                {"name": "release/v030", "pr_number": 25, "revision": 1},
+                {"name": "feat/next", "pr_number": 27, "revision": 1},
+            ],
+        },
+    )
+    monkeypatch.setattr(_git, "fetch", lambda remote="origin": None)
+    monkeypatch.setattr(_git, "current_branch", lambda: "feat/next")
+    monkeypatch.setattr(_git, "is_ancestor", lambda a, b: True)
+    monkeypatch.setattr(_git, "rebase", lambda onto: type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(_git, "checkout", lambda b: None)
+    monkeypatch.setattr(_git, "is_squash_merged", lambda root, branch, base: False)
+    monkeypatch.setattr(_git, "branch_exists", lambda b: True)
+    monkeypatch.setattr(_git, "get_sha", lambda ref: "abc123")
+    monkeypatch.setattr(_git, "commit_count", lambda base, branch: 1)
+    from arc import conflicts as _c
+
+    monkeypatch.setattr(_c, "predict_conflicts", lambda d, r: [])
+    # release/v030 PR is merged; feat/next is open
+    import arc.github as _gh
+
+    monkeypatch.setattr(_gh, "pr_is_merged", lambda n: n == 25)
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["sync", "-q"])
+    assert result.exit_code == 0
+    data = _load(arc_root)
+    names = [b["name"] for b in data["branches"]]
+    assert "release/v030" not in names
+    assert "feat/next" in names
