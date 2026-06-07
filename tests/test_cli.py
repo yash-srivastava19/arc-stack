@@ -289,7 +289,8 @@ def test_status_json(tmp_path):
     assert data["branches"][0]["revision"] == 1
 
 
-def test_status_human_exits_0(tmp_path):
+def test_status_human_exits_0(tmp_path, monkeypatch):
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)  # force human-readable output
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
     with (
@@ -313,6 +314,7 @@ def test_status_shows_hint_when_needs_rebase(tmp_path):
         patch("arc.git.commit_count", return_value=2),
         patch("arc.git.is_ancestor", return_value=False),
         patch("arc.github.get_pr", return_value=None),
+        patch("arc.cli._is_tty", return_value=True),
     ):
         result = runner.invoke(cli, ["status"])
     assert result.exit_code == 0
@@ -937,6 +939,7 @@ def test_periodic_hint_printed_when_random_hits(tmp_path):
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.github.get_pr", return_value=None),
         patch("arc.cli.random.randint", return_value=1),
+        patch("arc.cli._is_tty", return_value=True),
     ):
         result = runner.invoke(cli, ["status"])
     assert "arc report --feedback" in result.output
@@ -996,3 +999,100 @@ def test_periodic_hint_disabled_when_feedback_disabled(tmp_path):
     ):
         result = runner.invoke(cli, ["status"])
     assert "arc report --feedback" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# Task 3 (v0.3.0): Auto TTY detection, first-run experience, JSON errors
+# ---------------------------------------------------------------------------
+
+
+def test_status_auto_json_when_piped(arc_root, monkeypatch):
+    """When stdout is not a TTY, status should emit JSON without --json flag."""
+    import json
+    from unittest.mock import patch
+
+    from arc.state import save as _save
+
+    _save(arc_root, {"version": 1, "base": "main", "prefix": None, "branches": [], "metadata": {}})
+    monkeypatch.chdir(arc_root)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    # _is_tty returns False (not a TTY) so auto-JSON should kick in
+    with (
+        patch("arc.git.find_repo_root", return_value=arc_root),
+        patch("arc.git.current_branch", return_value="main"),
+        patch("arc.cli._is_tty", return_value=False),
+    ):
+        result = CliRunner().invoke(cli, ["status"])
+    data = json.loads(result.output)
+    assert "branches" in data
+
+
+def test_status_no_init_gives_helpful_message(tmp_path, monkeypatch):
+    """Running arc status without arc init should suggest arc init, not crash."""
+    monkeypatch.setattr("arc.cli._is_tty", lambda: True)  # force human-readable error output
+    (tmp_path / ".git").mkdir()
+    monkeypatch.chdir(tmp_path)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["status"])
+    assert result.exit_code == 2
+    assert "arc init" in result.output
+
+
+def test_status_json_error_on_no_init(tmp_path, monkeypatch):
+    """When --json is passed and command fails, error should be valid JSON."""
+    import json
+
+    (tmp_path / ".git").mkdir()
+    monkeypatch.chdir(tmp_path)
+    from click.testing import CliRunner
+
+    from arc.cli import cli
+
+    result = CliRunner().invoke(cli, ["status", "--json"])
+    assert result.exit_code == 2
+    data = json.loads(result.output)
+    assert data["ok"] is False
+    assert "error" in data
+    assert "hint" in data
+
+
+# ---------------------------------------------------------------------------
+# Task 5 (v0.3.0): arc doctor
+# ---------------------------------------------------------------------------
+
+
+def test_doctor_passes_in_clean_environment(monkeypatch):
+    """arc doctor exits 0 when git and gh are present and authenticated."""
+    from click.testing import CliRunner
+
+    from arc import git, github
+    from arc.cli import cli
+
+    monkeypatch.setattr(git, "is_installed", lambda: True)
+    monkeypatch.setattr(github, "is_installed", lambda: True)
+    monkeypatch.setattr(github, "is_authenticated", lambda: True)
+    result = CliRunner().invoke(cli, ["doctor"])
+    assert result.exit_code == 0
+    assert "git" in result.output
+    assert "gh" in result.output
+
+
+def test_doctor_fails_when_gh_not_authenticated(monkeypatch):
+    """arc doctor exits 1 when gh is not authenticated."""
+    from click.testing import CliRunner
+
+    from arc import git, github
+    from arc.cli import cli
+
+    monkeypatch.setattr(git, "is_installed", lambda: True)
+    monkeypatch.setattr(github, "is_installed", lambda: True)
+    monkeypatch.setattr(github, "is_authenticated", lambda: False)
+    result = CliRunner().invoke(cli, ["doctor"])
+    assert result.exit_code == 1
+    assert "gh auth login" in result.output
