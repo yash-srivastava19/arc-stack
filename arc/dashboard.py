@@ -337,7 +337,7 @@ class DashboardApp(App):
         self._load_state_async()
         self.set_timer(2.0, self._clear_status_message)
 
-    def action_quit(self) -> None:
+    async def action_quit(self) -> None:
         """Quit dashboard."""
         self.exit()
 
