@@ -629,7 +629,7 @@ def sync_cmd(dry_run, quiet, output_json):
                 if not dry_run:
                     if git.current_branch() == name:
                         git.checkout(data["base"])
-                    git.delete_branch(name)
+                    git.delete_branch(name, force=True)
         if squash_merged and not dry_run:
             data["branches"] = [b for b in data["branches"] if b["name"] not in squash_merged]
             st.save(root, data)
