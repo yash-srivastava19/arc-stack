@@ -284,6 +284,46 @@ def test_land_post_land_fires_with_pr_number(tmp_path):
     assert capture.read_text().strip() == "41"
 
 
+def test_submit_gate_failure_midstack_persists_created_prs(tmp_path):
+    """If pre-submit passes for branch 1 (PR created) then fails for branch 2,
+    branch 1's pr_number must be persisted to state.json."""
+    import json as _json_inner
+
+    _write_state(
+        tmp_path,
+        branches=[
+            {"name": "feat/a", "pr_number": None, "revision": 0},
+            {"name": "feat/b", "pr_number": None, "revision": 0},
+        ],
+    )
+    # Hook exits 0 for feat/a, 1 for any other branch
+    _write_hook(tmp_path, "pre-submit", '[ "$ARC_BRANCH" = "feat/a" ] && exit 0; exit 1')
+    p = _patched_submit_env(tmp_path)
+    with p[0], p[1], p[2], p[3], p[4], p[5], p[6]:
+        result = CliRunner().invoke(cli, ["submit"])
+    assert result.exit_code == 7
+    saved = _json_inner.loads((tmp_path / ".arc" / "state.json").read_text())
+    branches_by_name = {b["name"]: b for b in saved["branches"]}
+    assert branches_by_name["feat/a"]["pr_number"] == 99
+    assert branches_by_name["feat/b"]["pr_number"] is None
+
+
+def test_submit_update_path_heals_missing_pr_number(tmp_path):
+    """Re-running submit when GitHub has a PR but state.json doesn't must persist it."""
+    import json as _json_inner
+    from unittest.mock import patch
+
+    _write_state(tmp_path, branches=[{"name": "feat/a", "pr_number": None, "revision": 0}])
+    existing = {"number": 55, "url": "https://github.com/x/y/pull/55", "state": "OPEN"}
+    p = _patched_submit_env(tmp_path, existing_pr=existing)
+    with p[0], p[1], p[2], p[3], p[4], p[5], p[6], patch("arc.github.update_pr_body"):
+        result = CliRunner().invoke(cli, ["submit"])
+    assert result.exit_code == 0
+    saved = _json_inner.loads((tmp_path / ".arc" / "state.json").read_text())
+    branch = next(b for b in saved["branches"] if b["name"] == "feat/a")
+    assert branch["pr_number"] == 55
+
+
 def test_init_scaffolds_hooks_dir(tmp_path):
     import os
     from unittest.mock import patch

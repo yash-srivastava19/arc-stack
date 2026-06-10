@@ -91,6 +91,8 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
                 created.append(entry)
             else:
                 pr_number = b["pr_number"] or existing["number"]
+                if not b["pr_number"]:
+                    data = st.update_branch(data, name, pr_number=pr_number)
                 github.update_pr_body(pr_number, body)
                 if mark_open:
                     github.mark_pr_ready(pr_number)
@@ -112,8 +114,6 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
                 output_json=output_json,
                 quiet=quiet,
             )
-
-        if not dry_run:
             st.save(root, data)
 
         if output_json and not dry_run:
