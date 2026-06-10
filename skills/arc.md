@@ -289,7 +289,7 @@ Hooks are executable files placed at `.arc/hooks/<event>` (no extension). `arc i
 | `pre-*` | **Gate** — aborts the command immediately | 7 |
 | `post-*` | **Notify** — exit code is ignored; a dim warning + the hook's stderr is shown | — |
 
-A `pre-*` hook that cannot execute (bad shebang, permission error) is treated as a gate failure and exits with code 126 reported as a hook failure.
+A `pre-*` hook that cannot execute (bad shebang, permission error) is treated as a gate failure; arc always exits with code 7. The value 126 appears only inside the error message text (e.g. "pre-submit hook failed (exit 126)") when the hook binary itself could not be executed by the OS.
 
 ### JSON error shape (gate failure with `--json`)
 
@@ -315,9 +315,9 @@ When a `pre-*` hook fails and `--json` is active, arc emits on stdout:
 | `ARC_BASE` | Stack base branch (e.g. `main`) |
 | `ARC_ROOT` | Repo root absolute path |
 | `ARC_VERSION` | arc version string |
-| `ARC_PR_NUMBER` | PR number (integer string) — set on post-submit, pre/post-land |
-| `ARC_PR_URL` | PR URL string — set on post-submit, pre/post-land |
-| `ARC_DRAFT` | `"true"` or `"false"` — set on pre/post-submit |
+| `ARC_PR_NUMBER` | PR number (integer string) — set on pre-submit (only when updating an existing PR), post-submit, pre-land, post-land |
+| `ARC_PR_URL` | PR URL string — set on post-submit only |
+| `ARC_DRAFT` | `"true"` or `"false"` — set on pre-submit only |
 
 Booleans are lowercase strings (`"true"` / `"false"`). Variables whose value is `None` are omitted entirely.
 
@@ -329,8 +329,12 @@ Booleans are lowercase strings (`"true"` / `"false"`). Variables whose value is 
   "branch": "feat/api",
   "base": "main",
   "version": "0.5.0",
-  "extra": {"pr_number": null, "pr_url": null, "draft": true},
-  "stack": ["feat/auth", "feat/api", "feat/ui"]
+  "extra": {"pr_number": null, "draft": true},
+  "stack": [
+    {"name": "feat/auth", "pr_number": 42, "revision": 3},
+    {"name": "feat/api", "pr_number": null, "revision": 0},
+    {"name": "feat/ui", "pr_number": null, "revision": 0}
+  ]
 }
 ```
 
