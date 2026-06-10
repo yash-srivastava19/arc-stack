@@ -62,6 +62,17 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
                 err.print(f"\\[dry-run] {action} PR for {name} (base: {base})")
                 continue
 
+            _shared.run_lifecycle_hook(
+                root,
+                data,
+                "pre-submit",
+                branch=name,
+                extra={"pr_number": b["pr_number"], "draft": use_draft},
+                skip=skip_hooks,
+                output_json=output_json,
+                quiet=quiet,
+            )
+
             subject = git.get_commit_subject(name)
             body_text = git.get_commit_body(name)
             count = git.commit_count(base, name)
@@ -76,22 +87,33 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
             if not existing:
                 pr = github.create_pr(name, base, title, body, draft=use_draft)
                 data = st.update_branch(data, name, pr_number=pr["number"])
-                created.append({"branch": name, "pr_number": pr["number"], "pr_url": pr["url"]})
+                entry = {"branch": name, "pr_number": pr["number"], "pr_url": pr["url"]}
+                created.append(entry)
             else:
                 pr_number = b["pr_number"] or existing["number"]
+                if not b["pr_number"]:
+                    data = st.update_branch(data, name, pr_number=pr_number)
                 github.update_pr_body(pr_number, body)
                 if mark_open:
                     github.mark_pr_ready(pr_number)
-                updated.append(
-                    {
-                        "branch": name,
-                        "pr_number": pr_number,
-                        "pr_url": existing.get("url"),
-                        "revision": b["revision"],
-                    }
-                )
+                entry = {
+                    "branch": name,
+                    "pr_number": pr_number,
+                    "pr_url": existing.get("url"),
+                    "revision": b["revision"],
+                }
+                updated.append(entry)
 
-        if not dry_run:
+            _shared.run_lifecycle_hook(
+                root,
+                data,
+                "post-submit",
+                branch=name,
+                extra={"pr_number": entry["pr_number"], "pr_url": entry["pr_url"]},
+                skip=skip_hooks,
+                output_json=output_json,
+                quiet=quiet,
+            )
             st.save(root, data)
 
         if output_json and not dry_run:
@@ -125,8 +147,9 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
 @click.option("--keep-branch", is_flag=True)
 @click.option("-q", "--quiet", is_flag=True)
 @click.option("--json", "output_json", is_flag=True)
+@click.option("--skip-hooks", is_flag=True)
 @click.pass_context
-def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
+def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_hooks):
     """Land a merged PR and restack branches above it."""
     if not output_json and not _shared._is_tty():
         output_json = True
@@ -172,6 +195,16 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
             click.confirm(f"Delete local branch {target!r}?", abort=True)
 
     try:
+        _shared.run_lifecycle_hook(
+            root,
+            data,
+            "pre-land",
+            branch=target,
+            extra={"pr_number": b["pr_number"]},
+            skip=skip_hooks,
+            output_json=output_json,
+            quiet=quiet,
+        )
         pre_shas = {n: git.get_sha(n) for n in above}
         for ab in above:
             git.checkout(ab)
@@ -196,6 +229,17 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
 
         data = st.remove_branch(data, target)
         st.save(root, data)
+
+        _shared.run_lifecycle_hook(
+            root,
+            data,
+            "post-land",
+            branch=target,
+            extra={"pr_number": b["pr_number"]},
+            skip=skip_hooks,
+            output_json=output_json,
+            quiet=quiet,
+        )
 
         if not quiet:
             n_above = len(above)

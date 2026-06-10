@@ -14,6 +14,68 @@ from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err, out
 
+_HOOKS_README = """\
+# arc lifecycle hooks
+
+Executables in this directory run at lifecycle events, named by event
+(git's model). Activate a sample: rename it (drop `.sample`) and
+`chmod +x` it.
+
+| Event | Class | Fires |
+|---|---|---|
+| pre-submit  | gate   | before each PR create/update |
+| post-submit | notify | after each PR URL confirmed |
+| pre-land    | gate   | before restack + branch delete |
+| post-land   | notify | after branch deleted |
+| pre-sync    | gate   | before fetch + rebase chain |
+| post-sync   | notify | after all branches rebased |
+| pre-push    | gate   | before git push --force-with-lease |
+| post-push   | notify | after push confirmed |
+
+Gates (`pre-*`): non-zero exit aborts the command (exit 7).
+Notifications (`post-*`): exit code ignored.
+
+Context: env vars (ARC_EVENT, ARC_BRANCH, ARC_BASE, ARC_ROOT, ARC_VERSION,
+plus per-event extras like ARC_PR_NUMBER, ARC_PR_URL, ARC_DRAFT) and full
+JSON on stdin: {"event", "branch", "base", "version", "extra", "stack"}.
+
+Skip for one run: pass --skip-hooks to submit, land, sync, or push.
+"""
+
+_PRE_SUBMIT_SAMPLE = """\
+#!/bin/sh
+# pre-submit gate — runs before each PR create/update.
+# Non-zero exit aborts arc submit. Activate:
+#   mv pre-submit.sample pre-submit && chmod +x pre-submit
+echo "pre-submit: branch=$ARC_BRANCH base=$ARC_BASE draft=$ARC_DRAFT"
+# Example: run your linter
+# exec ruff check .
+exit 0
+"""
+
+_POST_LAND_SAMPLE = """\
+#!/bin/sh
+# post-land notification — runs after a branch lands and is deleted.
+# Exit code is ignored. Activate:
+#   mv post-land.sample post-land && chmod +x post-land
+echo "post-land: PR #$ARC_PR_NUMBER landed from $ARC_BRANCH"
+# Example: notify your team chat here.
+exit 0
+"""
+
+
+def _scaffold_hooks_dir(root) -> None:
+    hooks_dir = root / ".arc" / "hooks"
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    for name, content in (
+        ("README.md", _HOOKS_README),
+        ("pre-submit.sample", _PRE_SUBMIT_SAMPLE),
+        ("post-land.sample", _POST_LAND_SAMPLE),
+    ):
+        path = hooks_dir / name
+        if not path.exists():
+            path.write_text(content)
+
 
 @click.command("init")
 @click.option("--base", default=None, help="Trunk branch (default: repo default).")
@@ -27,6 +89,7 @@ def init_cmd(base, prefix, quiet):
     resolved_base = base or git.default_branch()
     data = st.init_state(base=resolved_base, prefix=prefix)
     st.save(root, data)
+    _scaffold_hooks_dir(root)
     _shared._update_gitignore(root, ".arc/state.json")
     if not quiet:
         err.print(f"Stack initialized (base: {resolved_base}).")

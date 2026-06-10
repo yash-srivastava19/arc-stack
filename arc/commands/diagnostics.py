@@ -68,6 +68,28 @@ def doctor_cmd() -> None:
         else:
             err.print("  stack not initialized in this repo (run arc init)", style="dim")
 
+        hooks_dir = root / ".arc" / "hooks"
+        if hooks_dir.is_dir():
+            from arc.hooks import EVENTS
+
+            for event in EVENTS:
+                hook_path = hooks_dir / event
+                if hook_path.is_file() and not os.access(hook_path, os.X_OK):
+                    err.print(f"✗ .arc/hooks/{event} exists but is not executable", style="red")
+                    err.print(f"  fix: chmod +x .arc/hooks/{event}", style="dim")
+                    ok = False
+            known = set(EVENTS) | {"README.md"}
+            for entry in sorted(hooks_dir.iterdir()):
+                if (
+                    entry.is_file()
+                    and entry.name not in known
+                    and not entry.name.endswith(".sample")
+                ):
+                    err.print(
+                        f"  .arc/hooks/{entry.name} is not a known hook event (ignored)",
+                        style="dim",
+                    )
+
     if not ok:
         sys.exit(1)
 
