@@ -52,7 +52,8 @@ def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = 
 @click.option("-n", "--dry-run", is_flag=True)
 @click.option("-q", "--quiet", is_flag=True)
 @click.option("--json", "output_json", is_flag=True)
-def sync_cmd(dry_run, quiet, output_json):
+@click.option("--skip-hooks", is_flag=True)
+def sync_cmd(dry_run, quiet, output_json, skip_hooks):
     """Fetch and cascade-rebase the stack."""
     if not output_json and not _shared._is_tty():
         output_json = True
@@ -64,6 +65,10 @@ def sync_cmd(dry_run, quiet, output_json):
         return
 
     try:
+        _shared.run_lifecycle_hook(
+            root, data, "pre-sync",
+            branch=git.current_branch(), skip=skip_hooks, output_json=output_json, quiet=quiet,
+        )
         if not quiet:
             err.print("Fetching...", end=" ")
         if not dry_run:
@@ -144,6 +149,10 @@ def sync_cmd(dry_run, quiet, output_json):
         if not dry_run and not quiet:
             err.print("Stack synced. Run 'arc push' to push to remote.")
         if not dry_run:
+            _shared.run_lifecycle_hook(
+                root, data, "post-sync",
+                branch=git.current_branch(), skip=skip_hooks, output_json=output_json, quiet=quiet,
+            )
             _shared._maybe_print_periodic_hint(root)
     except SystemExit:
         raise
