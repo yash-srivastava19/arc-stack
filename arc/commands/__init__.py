@@ -17,6 +17,15 @@ from arc.commands.diagnostics import (
     upgrade_cmd,
 )
 from arc.commands.nav import bottom_cmd, checkout_cmd, down_cmd, top_cmd, up_cmd
+from arc.commands.stack import (
+    add_cmd,
+    amend_cmd,
+    drop_cmd,
+    init_cmd,
+    new_cmd,
+    stack_group,
+    status_cmd,
+)
 
 ALL_COMMANDS: list = [
     setup,
@@ -32,4 +41,11 @@ ALL_COMMANDS: list = [
     bottom_cmd,
     config_group,
     schema_cmd,
+    init_cmd,
+    new_cmd,
+    add_cmd,
+    status_cmd,
+    amend_cmd,
+    drop_cmd,
+    stack_group,
 ]
