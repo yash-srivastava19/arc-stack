@@ -2,22 +2,18 @@ from __future__ import annotations
 
 import json as _json
 import os
-import random
 import subprocess as _subprocess
 import sys
-import tempfile
 
 import click
-from rich.console import Console
 from rich.tree import Tree
 
 from arc import conflicts as _conflicts
 from arc import git, github, ops
 from arc import graph as _graph
 from arc import state as st
-
-err = Console(stderr=True)
-out = Console()
+from arc.commands import _shared
+from arc.commands._shared import err, out
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
@@ -59,120 +55,11 @@ def cli(ctx, no_color, no_input, verbose):
         os.environ["NO_COLOR"] = "1"
 
 
-def _maybe_print_periodic_hint(root) -> None:
-    """Randomly print non-blocking feedback hint on success."""
-    try:
-        config = st.load_config(root)
-    except Exception:
-        config = {}
-    feedback_config = config.get("feedback", {})
-
-    if not feedback_config.get("enabled", True):
-        return
-    if not feedback_config.get("prompt_periodic", True):
-        return
-
-    rate = feedback_config.get("prompt_periodic_rate", 5)
-
-    if random.randint(1, rate) == 1:
-        err.print("→ Feedback welcome? arc report --feedback", style="dim")
-
-    # version hint (independent of feedback rate)
-    try:
-        root = git.find_repo_root()
-        from arc.update import version_hint as _vhint
-
-        hint = _vhint(root)
-        if hint:
-            err.print(f"→ {hint}", style="dim")
-    except Exception:
-        pass
-
-
-def _maybe_print_error_hint(root) -> None:
-    """Print non-blocking hint about arc report --bug after error."""
-    try:
-        config = st.load_config(root)
-    except Exception:
-        config = {}
-    feedback_config = config.get("feedback", {})
-
-    if not feedback_config.get("enabled", True):
-        return
-    if not feedback_config.get("prompt_after_error", True):
-        return
-
-    err.print("→ Report this: arc report --bug", style="dim")
-
-
-def _check_setup() -> bool:
-    """Returns True if environment is ready. Prints errors and returns False if not."""
-    ok = True
-    if not git.is_installed():
-        err.print("git is not installed.")
-        err.print("hint: install git from https://git-scm.com", style="dim")
-        ok = False
-    if not github.is_installed():
-        err.print("gh is not installed.")
-        err.print("hint: install from https://cli.github.com", style="dim")
-        ok = False
-    elif not github.is_authenticated():
-        err.print("gh is not authenticated.")
-        err.print("hint: run gh auth login", style="dim")
-        ok = False
-    return ok
-
-
-def _is_tty() -> bool:
-    """Return True if stdout is a TTY. Extracted for testability."""
-    return sys.stdout.isatty()
-
-
-def _exit_json_error(
-    message: str, exit_code: int, hint: str = "", output_json: bool = False
-) -> None:
-    if output_json:
-        import json as _j
-
-        out.print_json(
-            _j.dumps({"ok": False, "error": message, "exit_code": exit_code, "hint": hint})
-        )
-    else:
-        err.print(message)
-        if hint:
-            err.print(f"hint: {hint}", style="dim")
-    sys.exit(exit_code)
-
-
-def _load_state_or_exit(root, output_json: bool = False):
-    try:
-        return st.load(root)
-    except FileNotFoundError:
-        _exit_json_error(
-            "arc is not initialized in this repo.",
-            exit_code=2,
-            hint="run arc init --base main",
-            output_json=output_json,
-        )
-    except Exception as e:
-        _exit_json_error(str(e), exit_code=2, output_json=output_json)
-
-
-def _update_gitignore(root, entry: str) -> None:
-    gitignore = root / ".gitignore"
-    existing = gitignore.read_text() if gitignore.exists() else ""
-    if entry not in existing:
-        with open(gitignore, "a") as f:
-            if existing and not existing.endswith("\n"):
-                f.write("\n")
-            f.write(f"{entry}\n")
-
-
 @cli.command()
 @click.option("-q", "--quiet", is_flag=True)
 def setup(quiet):
     """Check environment and configure git for arc."""
-    if not _check_setup():
+    if not _shared._check_setup():
         sys.exit(6)
     git.set_config("rerere.enabled", "true", global_=True)
     if not quiet:
@@ -379,7 +266,7 @@ def config_set_cmd(key: str, value: str) -> None:
     config_path = root / ".arc" / "config.json"
     config_path.parent.mkdir(exist_ok=True)
     config_path.write_text(_j.dumps(cfg, indent=2))
-    if not _is_tty():
+    if not _shared._is_tty():
         return
     err.print(f"Set {key} = {coerced}")
 
@@ -410,13 +297,13 @@ def config_list_cmd() -> None:
 @click.option("-q", "--quiet", is_flag=True)
 def init_cmd(base, prefix, quiet):
     """Initialize a stack in the current repo."""
-    if not _check_setup():
+    if not _shared._check_setup():
         sys.exit(6)
     root = git.find_repo_root()
     resolved_base = base or git.default_branch()
     data = st.init_state(base=resolved_base, prefix=prefix)
     st.save(root, data)
-    _update_gitignore(root, ".arc/state.json")
+    _shared._update_gitignore(root, ".arc/state.json")
     if not quiet:
         err.print(f"Stack initialized (base: {resolved_base}).")
         err.print("Run 'arc new <branch>' to create your first branch.")
@@ -428,7 +315,7 @@ def init_cmd(base, prefix, quiet):
 def new_cmd(branch, quiet):
     """Create a new branch and add it to the stack."""
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _shared._load_state_or_exit(root)
     name = st.apply_prefix(data, branch)
     data = st.add_branch(data, name)
     git.create_branch(name, "HEAD")
@@ -446,10 +333,10 @@ def new_cmd(branch, quiet):
 @click.option("-q", "--quiet", is_flag=True)
 def restack_cmd(branch: str | None, dry_run: bool, quiet: bool) -> None:
     """Restack a single branch onto its stack parent without full sync."""
-    if not _check_setup():
+    if not _shared._check_setup():
         sys.exit(6)
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _shared._load_state_or_exit(root)
     target = branch or git.current_branch()
     names = [b["name"] for b in data["branches"]]
     if target not in names:
@@ -478,7 +365,7 @@ def restack_cmd(branch: str | None, dry_run: bool, quiet: bool) -> None:
 def add_cmd(branch, quiet):
     """Adopt an existing branch into the stack."""
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _shared._load_state_or_exit(root)
     name = st.apply_prefix(data, branch)
     if not git.branch_exists(name):
         err.print(f"Branch {name!r} does not exist locally.")
@@ -500,10 +387,10 @@ def add_cmd(branch, quiet):
 @click.option("-q", "--quiet", is_flag=True)
 def status_cmd(output_json, plain, quiet):
     """Show the current stack."""
-    if not output_json and not _is_tty():
+    if not output_json and not _shared._is_tty():
         output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root, output_json=output_json)
+    data = _shared._load_state_or_exit(root, output_json=output_json)
     current = git.current_branch()
     names = st.branch_names(data)
 
@@ -545,7 +432,7 @@ def status_cmd(output_json, plain, quiet):
         hint = ops.next_step_hint(status)
         if hint:
             err.print(f"\n→ {hint}")
-    _maybe_print_periodic_hint(root)
+    _shared._maybe_print_periodic_hint(root)
 
 
 def _stale_pr_bases(data: dict, status: dict) -> list[str]:
@@ -616,10 +503,10 @@ def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = 
 @click.option("--json", "output_json", is_flag=True)
 def sync_cmd(dry_run, quiet, output_json):
     """Fetch and cascade-rebase the stack."""
-    if not output_json and not _is_tty():
+    if not output_json and not _shared._is_tty():
         output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root, output_json=output_json)
+    data = _shared._load_state_or_exit(root, output_json=output_json)
     if not st.branch_names(data):
         err.print("Stack is empty.")
         err.print("hint: run arc new <branch> to create your first branch", style="dim")
@@ -689,7 +576,7 @@ def sync_cmd(dry_run, quiet, output_json):
                 files = git.conflicted_files()
                 err.print(f"Conflict in {branch}. Resolve: {', '.join(files) or 'see git status'}")
                 err.print("Then run 'arc rebase --continue' or 'arc rebase --abort'.")
-                _maybe_print_error_hint(root)
+                _shared._maybe_print_error_hint(root)
                 sys.exit(3)
 
         if not dry_run:
@@ -706,11 +593,11 @@ def sync_cmd(dry_run, quiet, output_json):
         if not dry_run and not quiet:
             err.print("Stack synced. Run 'arc push' to push to remote.")
         if not dry_run:
-            _maybe_print_periodic_hint(root)
+            _shared._maybe_print_periodic_hint(root)
     except SystemExit:
         raise
     except Exception:
-        _maybe_print_error_hint(root)
+        _shared._maybe_print_error_hint(root)
         raise
 
 
@@ -720,10 +607,10 @@ def sync_cmd(dry_run, quiet, output_json):
 @click.option("--json", "output_json", is_flag=True)
 def push_cmd(dry_run, quiet, output_json):
     """Force-push all stack branches to remote."""
-    if not output_json and not _is_tty():
+    if not output_json and not _shared._is_tty():
         output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root, output_json=output_json)
+    data = _shared._load_state_or_exit(root, output_json=output_json)
     names = st.branch_names(data)
     if not names:
         err.print("Stack is empty.")
@@ -743,11 +630,11 @@ def push_cmd(dry_run, quiet, output_json):
         st.save(root, data)
         if not quiet:
             err.print(f"Pushed {len(names)} branches. Run 'arc submit' to create pull requests.")
-        _maybe_print_periodic_hint(root)
+        _shared._maybe_print_periodic_hint(root)
     except SystemExit:
         raise
     except Exception:
-        _maybe_print_error_hint(root)
+        _shared._maybe_print_error_hint(root)
         raise
 
 
@@ -769,10 +656,10 @@ def _run_hooks(root, hooks: list[str]) -> None:
 @click.option("--json", "output_json", is_flag=True)
 def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
     """Create or update pull requests for the stack."""
-    if not output_json and not _is_tty():
+    if not output_json and not _shared._is_tty():
         output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root, output_json=output_json)
+    data = _shared._load_state_or_exit(root, output_json=output_json)
     branches = data["branches"]
     if not branches:
         err.print("Stack is empty.")
@@ -847,11 +734,11 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
                         )
 
         if not dry_run:
-            _maybe_print_periodic_hint(root)
+            _shared._maybe_print_periodic_hint(root)
     except SystemExit:
         raise
     except Exception:
-        _maybe_print_error_hint(root)
+        _shared._maybe_print_error_hint(root)
         raise
 
 
@@ -870,10 +757,10 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
 @click.pass_context
 def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
     """Land a merged PR and restack branches above it."""
-    if not output_json and not _is_tty():
+    if not output_json and not _shared._is_tty():
         output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root, output_json=output_json)
+    data = _shared._load_state_or_exit(root, output_json=output_json)
     names = st.branch_names(data)
     if not names:
         err.print("Stack is empty.")
@@ -929,7 +816,7 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
                     except Exception:
                         pass
                 err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
-                _maybe_print_error_hint(root)
+                _shared._maybe_print_error_hint(root)
                 sys.exit(3)
 
         if not keep_branch:
@@ -946,7 +833,7 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
     except SystemExit:
         raise
     except Exception:
-        _maybe_print_error_hint(root)
+        _shared._maybe_print_error_hint(root)
         raise
 
 
@@ -960,7 +847,7 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
 def amend_cmd(quiet):
     """Update commit message with PR link and stack position."""
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _shared._load_state_or_exit(root)
     current = git.current_branch()
     b = st.get_branch(data, current)
     if not b:
@@ -992,10 +879,10 @@ def amend_cmd(quiet):
 @click.pass_context
 def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
     """Remove a branch from the stack and restack above it."""
-    if not output_json and not _is_tty():
+    if not output_json and not _shared._is_tty():
         output_json = True
     root = git.find_repo_root()
-    data = _load_state_or_exit(root, output_json=output_json)
+    data = _shared._load_state_or_exit(root, output_json=output_json)
     name = st.apply_prefix(data, branch)
     if not st.get_branch(data, name):
         err.print(f"{name!r} is not in the stack.")
@@ -1022,7 +909,7 @@ def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
             if result.returncode != 0:
                 git.rebase_abort()
                 err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
-                _maybe_print_error_hint(root)
+                _shared._maybe_print_error_hint(root)
                 sys.exit(3)
         data = st.remove_branch(data, name)
         st.save(root, data)
@@ -1031,7 +918,7 @@ def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
     except SystemExit:
         raise
     except Exception:
-        _maybe_print_error_hint(root)
+        _shared._maybe_print_error_hint(root)
         raise
 
 
@@ -1050,7 +937,7 @@ def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
 def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
     """Cascade-rebase the stack or part of it."""
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _shared._load_state_or_exit(root)
 
     if do_continue:
         result = git.rebase_continue()
@@ -1092,7 +979,7 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
                 files = git.conflicted_files()
                 err.print(f"Conflict in {branch}: {', '.join(files) or 'see git status'}")
                 err.print("Resolve conflicts, then run 'arc rebase --continue'.")
-                _maybe_print_error_hint(root)
+                _shared._maybe_print_error_hint(root)
                 sys.exit(3)
 
         if not dry_run and not quiet:
@@ -1100,7 +987,7 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
     except SystemExit:
         raise
     except Exception:
-        _maybe_print_error_hint(root)
+        _shared._maybe_print_error_hint(root)
         raise
 
 
@@ -1114,7 +1001,7 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
 def checkout_cmd(target):
     """Check out a branch by name or index (1-based)."""
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _shared._load_state_or_exit(root)
     if target.isdigit():
         name = ops.branch_at_index(data, int(target))
         if not name:
@@ -1131,7 +1018,7 @@ def checkout_cmd(target):
 
 def _navigate(n: int, direction: int) -> None:
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _shared._load_state_or_exit(root)
     names = st.branch_names(data)
     current = git.current_branch()
     if current not in names:
@@ -1161,7 +1048,7 @@ def down_cmd(n):
 def top_cmd():
     """Jump to the topmost branch."""
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _shared._load_state_or_exit(root)
     names = st.branch_names(data)
     if not names:
         err.print("Stack is empty.")
@@ -1174,7 +1061,7 @@ def top_cmd():
 def bottom_cmd():
     """Jump to the bottommost branch."""
     root = git.find_repo_root()
-    data = _load_state_or_exit(root)
+    data = _shared._load_state_or_exit(root)
     names = st.branch_names(data)
     if not names:
         err.print("Stack is empty.")
@@ -1197,10 +1084,10 @@ def stack_group() -> None:
 @click.option("--json", "output_json", is_flag=True)
 def stack_analyze_cmd(output_json: bool) -> None:
     """Show critical path, safe-to-land branches, and blockers."""
-    if not _check_setup():
+    if not _shared._check_setup():
         sys.exit(6)
     root = git.find_repo_root()
-    data = _load_state_or_exit(root, output_json=output_json)
+    data = _shared._load_state_or_exit(root, output_json=output_json)
     if not data.get("branches"):
         err.print("Stack is empty.")
         err.print("hint: run arc new <branch> to create your first branch", style="dim")
@@ -1255,23 +1142,6 @@ def stack_analyze_cmd(output_json: bool) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _open_editor(template: str) -> str:
-    """Open $EDITOR with template, return edited text."""
-    editor = os.environ.get("EDITOR", "vi")
-
-    with tempfile.NamedTemporaryFile(mode="w+", suffix=".md", delete=False) as f:
-        f.write(template)
-        f.flush()
-        temp_path = f.name
-
-    try:
-        _subprocess.run([editor, temp_path], check=False)
-        with open(temp_path) as f:
-            return f.read()
-    finally:
-        os.unlink(temp_path)
-
-
 @cli.command("report")
 @click.option("--bug", is_flag=True)
 @click.option("--feedback", is_flag=True)
@@ -1299,7 +1169,7 @@ def report_cmd(bug, feedback, message, dry_run, quiet):
     else:
         # TTY: open editor
         template = report_module.collect_env_context() + "\n---\n\nDescribe the issue here..."
-        user_text = _open_editor(template)
+        user_text = _shared._open_editor(template)
         if not user_text or not user_text.strip():
             err.print("Aborted: no issue description provided.")
             sys.exit(1)
