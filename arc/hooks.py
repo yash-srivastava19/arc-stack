@@ -7,6 +7,10 @@ Hooks are plain executables in a hooks directory, named by event
 
 Dependency rule: this module imports stdlib only — never arc.* — so it
 can be extracted as a standalone package (roadmap item 8b).
+
+Hooks run unbounded (no timeout), like git's — a pre-submit hook may
+legitimately run a full test suite. Callers should announce the hook
+before invoking so users know what is running.
 """
 
 from __future__ import annotations
@@ -87,6 +91,10 @@ class HookResult:
 
 
 def run_hook(event: str, ctx: HookContext, hooks_dir: Path) -> HookResult:
+    if event not in EVENTS:
+        raise ValueError(f"unknown hook event {event!r}; expected one of {EVENTS}")
+    if event != ctx.event:
+        raise ValueError(f"event {event!r} does not match ctx.event {ctx.event!r}")
     path = hooks_dir / event
     if not path.is_file() or not os.access(path, os.X_OK):
         return HookResult(ok=True, ran=False)

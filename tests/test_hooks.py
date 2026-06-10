@@ -109,7 +109,7 @@ def test_gate_failure_not_ok(tmp_path):
 def test_notify_failure_still_ok(tmp_path):
     hooks_dir = tmp_path / "hooks"
     _write_hook(hooks_dir, "post-submit", "exit 1")
-    res = run_hook("post-submit", _ctx(tmp_path), hooks_dir)
+    res = run_hook("post-submit", _ctx(tmp_path, event="post-submit"), hooks_dir)
     assert res.ok and res.ran and res.exit_code == 1
 
 
@@ -161,7 +161,7 @@ def test_hook_exec_failure_is_nonfatal_for_notify(tmp_path):
     path = hooks_dir / "post-submit"
     path.write_text("echo no shebang\n")
     path.chmod(0o755)
-    res = run_hook("post-submit", _ctx(tmp_path), hooks_dir)
+    res = run_hook("post-submit", _ctx(tmp_path, event="post-submit"), hooks_dir)
     assert res.ran and res.ok and res.exit_code == 126
 
 
@@ -196,3 +196,22 @@ def test_hooks_module_imports_stdlib_only():
             names = [node.module or ""]
         for name in names:
             assert not name.startswith("arc"), f"arc.hooks imports {name!r} — must be stdlib-only"
+
+
+def test_event_ctx_mismatch_raises(tmp_path):
+    with pytest.raises(ValueError, match="does not match"):
+        run_hook("pre-push", _ctx(tmp_path, event="pre-submit"), tmp_path / "hooks")
+
+
+def test_unknown_event_raises(tmp_path):
+    with pytest.raises(ValueError, match="unknown hook event"):
+        run_hook("pre_submit", _ctx(tmp_path, event="pre_submit"), tmp_path / "hooks")
+
+
+def test_context_env_overrides_inherited(tmp_path, monkeypatch):
+    monkeypatch.setenv("ARC_BRANCH", "stale-inherited-value")
+    hooks_dir = tmp_path / "hooks"
+    capture = tmp_path / "captured-env"
+    _write_hook(hooks_dir, "pre-submit", f'echo "$ARC_BRANCH" > {capture}')
+    run_hook("pre-submit", _ctx(tmp_path), hooks_dir)
+    assert capture.read_text().strip() == "feat/auth"
