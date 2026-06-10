@@ -148,3 +148,56 @@ def _open_editor(template: str) -> str:
             return f.read()
     finally:
         os.unlink(temp_path)
+
+
+def run_lifecycle_hook(
+    root,
+    data: dict,
+    event: str,
+    *,
+    branch: str = "",
+    extra: dict | None = None,
+    skip: bool = False,
+    output_json: bool = False,
+    quiet: bool = False,
+) -> None:
+    """Fire a file-based lifecycle hook from .arc/hooks/<event>.
+
+    Gate (pre-*) failure exits with code 7 (same as legacy config hooks).
+    Notify (post-*) failure prints a dim warning and continues. Missing or
+    non-executable hook is a silent no-op (arc doctor surfaces the
+    non-executable case).
+    """
+    if skip:
+        return
+    from arc import __version__, hooks
+
+    hooks_dir = root / ".arc" / "hooks"
+    path = hooks_dir / event
+    if not path.is_file() or not os.access(path, os.X_OK):
+        return
+    if not quiet:
+        err.print(f"→ running {event} hook", style="dim")
+    ctx = hooks.HookContext(
+        event=event,
+        branch=branch,
+        base=data.get("base", ""),
+        root=root,
+        version=__version__,
+        extra=extra or {},
+        stack=data.get("branches", []),
+    )
+    result = hooks.run_hook(event, ctx, hooks_dir)
+    if result.stdout.strip() and not quiet:
+        err.print(result.stdout.rstrip(), style="dim")
+    if not result.ok:
+        if result.stderr.strip():
+            err.print(result.stderr.rstrip())
+        _exit_json_error(
+            f"{event} hook failed (exit {result.exit_code})",
+            exit_code=7,
+            hint="fix the hook or re-run with --skip-hooks",
+            output_json=output_json,
+        )
+    elif result.exit_code != 0 and not quiet:
+        err.print(f"→ {event} hook exited {result.exit_code} (ignored)", style="dim")
