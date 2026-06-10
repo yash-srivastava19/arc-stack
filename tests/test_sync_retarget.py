@@ -2,7 +2,7 @@ import subprocess
 from unittest.mock import MagicMock, Mock, patch
 
 from arc import git, github
-from arc.cli import detect_merged_branches, retarget_dependent_prs
+from arc.commands.sync import detect_merged_branches, retarget_dependent_prs
 
 
 def mock_result(stdout="", returncode=0, stderr=""):

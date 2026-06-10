@@ -26,6 +26,8 @@ from arc.commands.stack import (
     stack_group,
     status_cmd,
 )
+from arc.commands.submit import land_cmd, submit_cmd
+from arc.commands.sync import push_cmd, rebase_cmd, restack_cmd, sync_cmd
 
 ALL_COMMANDS: list = [
     setup,
@@ -48,4 +50,10 @@ ALL_COMMANDS: list = [
     amend_cmd,
     drop_cmd,
     stack_group,
+    submit_cmd,
+    land_cmd,
+    sync_cmd,
+    push_cmd,
+    restack_cmd,
+    rebase_cmd,
 ]
