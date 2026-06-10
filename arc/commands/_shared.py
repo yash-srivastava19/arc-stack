@@ -1,3 +1,12 @@
+"""Cross-command CLI plumbing shared by all arc command modules.
+
+Import contract: command modules use `from arc.commands import _shared` and
+call `_shared.helper()` so tests can patch the single canonical target
+(arc.commands._shared.*). Exception: the `err`/`out` Console singletons may
+be imported directly (`from arc.commands._shared import err, out`) — patching
+an attribute on the shared instance works regardless of import path.
+"""
+
 from __future__ import annotations
 
 import os

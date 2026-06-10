@@ -4,10 +4,10 @@ import json
 import urllib.request
 from pathlib import Path
 
+from arc import __version__
+
 
 def current_version() -> str:
-    from arc import __version__
-
     return __version__
 
 

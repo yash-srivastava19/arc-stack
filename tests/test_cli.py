@@ -1036,7 +1036,9 @@ def test_status_auto_json_when_piped(arc_root, monkeypatch):
 
 def test_status_no_init_gives_helpful_message(tmp_path, monkeypatch):
     """Running arc status without arc init should suggest arc init, not crash."""
-    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)  # force human-readable error output
+    monkeypatch.setattr(
+        "arc.commands._shared._is_tty", lambda: True
+    )  # force human-readable error output
     (tmp_path / ".git").mkdir()
     monkeypatch.chdir(tmp_path)
     from click.testing import CliRunner
@@ -1610,9 +1612,33 @@ def test_status_warns_on_stale_pr_base(arc_root, monkeypatch):
 def test_cli_command_inventory_unchanged():
     """The public CLI surface must not change during the v0.5.0 refactor."""
     expected = {
-        "setup", "doctor", "completions", "upgrade", "schema", "config",
-        "init", "new", "restack", "add", "status", "sync", "push", "submit",
-        "land", "amend", "drop", "rebase", "checkout", "up", "down", "top",
-        "bottom", "stack", "report", "dashboard",
+        "setup",
+        "doctor",
+        "completions",
+        "upgrade",
+        "schema",
+        "config",
+        "init",
+        "new",
+        "restack",
+        "add",
+        "status",
+        "sync",
+        "push",
+        "submit",
+        "land",
+        "amend",
+        "drop",
+        "rebase",
+        "checkout",
+        "up",
+        "down",
+        "top",
+        "bottom",
+        "stack",
+        "report",
+        "dashboard",
     }
     assert set(cli.commands.keys()) == expected
+    assert set(cli.commands["config"].commands.keys()) == {"get", "set", "list"}
+    assert set(cli.commands["stack"].commands.keys()) == {"analyze"}

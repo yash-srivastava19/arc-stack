@@ -8,8 +8,8 @@ import sys
 import click
 from rich.tree import Tree
 
+from arc import __version__, git, github, ops
 from arc import conflicts as _conflicts
-from arc import git, github, ops
 from arc import graph as _graph
 from arc import state as st
 from arc.commands import _shared
@@ -19,7 +19,7 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 
 @click.group(context_settings=CONTEXT_SETTINGS)
-@click.version_option(version=None, package_name="arc-prs", prog_name="arc")
+@click.version_option(version=__version__, prog_name="arc")
 @click.option(
     "--no-color", is_flag=True, envvar="NO_COLOR", is_eager=True, help="Disable color output."
 )
@@ -70,8 +70,6 @@ def setup(quiet):
 @cli.command("doctor")
 def doctor_cmd() -> None:
     """Check environment and report what's wrong."""
-    from arc import __version__
-
     ok = True
 
     def check(label: str, passed: bool, fix: str) -> None:
