@@ -141,8 +141,9 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
 @click.option("--keep-branch", is_flag=True)
 @click.option("-q", "--quiet", is_flag=True)
 @click.option("--json", "output_json", is_flag=True)
+@click.option("--skip-hooks", is_flag=True)
 @click.pass_context
-def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
+def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_hooks):
     """Land a merged PR and restack branches above it."""
     if not output_json and not _shared._is_tty():
         output_json = True
@@ -188,6 +189,12 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
             click.confirm(f"Delete local branch {target!r}?", abort=True)
 
     try:
+        _shared.run_lifecycle_hook(
+            root, data, "pre-land",
+            branch=target,
+            extra={"pr_number": b["pr_number"]},
+            skip=skip_hooks, output_json=output_json, quiet=quiet,
+        )
         pre_shas = {n: git.get_sha(n) for n in above}
         for ab in above:
             git.checkout(ab)
@@ -212,6 +219,13 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json):
 
         data = st.remove_branch(data, target)
         st.save(root, data)
+
+        _shared.run_lifecycle_hook(
+            root, data, "post-land",
+            branch=target,
+            extra={"pr_number": b["pr_number"]},
+            skip=skip_hooks, output_json=output_json, quiet=quiet,
+        )
 
         if not quiet:
             n_above = len(above)
