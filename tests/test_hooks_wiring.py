@@ -112,6 +112,22 @@ def test_push_post_push_failure_does_not_fail_command(tmp_path):
     assert result.exit_code == 0
 
 
+def test_sync_dry_run_does_not_fire_hooks(tmp_path):
+    """Dry-run never fires hooks — consistent with push/submit/land."""
+    from unittest.mock import patch
+
+    _write_state(tmp_path)
+    _write_hook(tmp_path, "pre-sync", "exit 1")
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/a"),
+        patch("arc.git.branch_exists", return_value=True),
+        patch("arc.git.is_squash_merged", return_value=False),
+    ):
+        result = CliRunner().invoke(cli, ["sync", "--dry-run"])
+    assert result.exit_code == 0
+
+
 def test_sync_pre_sync_gate_aborts_before_fetch(tmp_path):
     from unittest.mock import patch
 
