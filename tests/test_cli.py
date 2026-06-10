@@ -21,10 +21,14 @@ def _write_state(tmp_path, base="main", prefix=None, branches=None):
 
 
 def test_version():
+    from arc import __version__
+
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
-    assert "0.3.2" in result.output
+    assert __version__ in result.output
+    # Guard against the hardcoded-literal regression (shipped 0.4.0 reporting "0.3.2")
+    assert "0.3.2" not in result.output
 
 
 def test_help():

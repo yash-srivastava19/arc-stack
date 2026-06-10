@@ -23,7 +23,7 @@ CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 
 @click.group(context_settings=CONTEXT_SETTINGS)
-@click.version_option("0.3.2", prog_name="arc")
+@click.version_option(version=None, package_name="arc-prs", prog_name="arc")
 @click.option(
     "--no-color", is_flag=True, envvar="NO_COLOR", is_eager=True, help="Disable color output."
 )
@@ -183,7 +183,7 @@ def setup(quiet):
 @cli.command("doctor")
 def doctor_cmd() -> None:
     """Check environment and report what's wrong."""
-    import importlib.metadata
+    from arc import __version__
 
     ok = True
 
@@ -203,11 +203,7 @@ def doctor_cmd() -> None:
     if gh_ok:
         check("gh authenticated", github.is_authenticated(), "run gh auth login")
 
-    try:
-        current = importlib.metadata.version("arc-prs")
-    except importlib.metadata.PackageNotFoundError:
-        current = "unknown"
-    err.print(f"✓ arc version {current}", style="green")
+    err.print(f"✓ arc version {__version__}", style="green")
 
     root = None
     try:
