@@ -72,7 +72,7 @@ State is stored in `.arc/state.json` (gitignored). Configuration lives in `.arc/
 | 3 | Rebase conflict | Resolve conflicts, then `arc rebase --continue`; or `arc rebase --abort`. |
 | 5 | Branch not in stack | Verify branch name with `arc status --plain`. |
 | 6 | Environment not ready (git or gh missing / not authenticated) | Run `arc setup` and fix the reported issue. |
-| 7 | Pre-submit hook failed | Fix the hook failure or pass `--skip-hooks` to bypass. |
+| 7 | Hook gate failed (`pre-*` hook exited non-zero) | Fix the hook failure or pass `--skip-hooks` to bypass. |
 
 ---
 
@@ -271,3 +271,84 @@ Issues are created on GitHub with environment context (arc version, Python versi
 [feedback]
 enabled = false
 ```
+
+---
+
+## Lifecycle hooks
+
+Arc fires lifecycle hooks for 8 events: `pre-submit`, `post-submit`, `pre-land`, `post-land`, `pre-sync`, `post-sync`, `pre-push`, `post-push`.
+
+### Hook file layout
+
+Hooks are executable files placed at `.arc/hooks/<event>` (no extension). `arc init` scaffolds `.arc/hooks/` with a `README.md`, a `pre-submit.sample`, and a `post-land.sample`. `arc doctor` flags hook files that exist but are not executable.
+
+### Gate vs. notify semantics
+
+| Prefix | Behaviour on non-zero exit | Exit code |
+|--------|---------------------------|-----------|
+| `pre-*` | **Gate** — aborts the command immediately | 7 |
+| `post-*` | **Notify** — exit code is ignored; a dim warning + the hook's stderr is shown | — |
+
+A `pre-*` hook that cannot execute (bad shebang, permission error) is treated as a gate failure and exits with code 126 reported as a hook failure.
+
+### JSON error shape (gate failure with `--json`)
+
+When a `pre-*` hook fails and `--json` is active, arc emits on stdout:
+
+```json
+{
+  "ok": false,
+  "error": "<event> hook failed (exit N)",
+  "exit_code": 7,
+  "hint": "fix the hook or re-run with --skip-hooks"
+}
+```
+
+### Hook context
+
+**Environment variables** set for every hook invocation:
+
+| Variable | Value |
+|----------|-------|
+| `ARC_EVENT` | Event name (e.g. `pre-submit`) |
+| `ARC_BRANCH` | Current branch name |
+| `ARC_BASE` | Stack base branch (e.g. `main`) |
+| `ARC_ROOT` | Repo root absolute path |
+| `ARC_VERSION` | arc version string |
+| `ARC_PR_NUMBER` | PR number (integer string) — set on post-submit, pre/post-land |
+| `ARC_PR_URL` | PR URL string — set on post-submit, pre/post-land |
+| `ARC_DRAFT` | `"true"` or `"false"` — set on pre/post-submit |
+
+Booleans are lowercase strings (`"true"` / `"false"`). Variables whose value is `None` are omitted entirely.
+
+**stdin** receives a JSON object:
+
+```json
+{
+  "event": "pre-submit",
+  "branch": "feat/api",
+  "base": "main",
+  "version": "0.5.0",
+  "extra": {"pr_number": null, "pr_url": null, "draft": true},
+  "stack": ["feat/auth", "feat/api", "feat/ui"]
+}
+```
+
+### Per-command hook firing
+
+- **submit** — `pre-submit` / `post-submit` fire **per branch** in the stack (once per branch being created or updated).
+- **sync**, **push**, **land** — `pre-<cmd>` / `post-<cmd>` fire **once per command invocation** (not per branch).
+
+### Skipping hooks
+
+Pass `--skip-hooks` to `arc submit`, `arc land`, `arc sync`, or `arc push` to skip all hooks for that run. Dry-run (`-n` / `--dry-run`) never fires hooks.
+
+### Legacy config hooks
+
+`hooks.pre-submit` (list of shell commands) in `.arc/config.json` is still supported and runs on `arc submit`, unchanged, with the same exit-7 semantics. This is separate from the file-based hook system above.
+
+### Agent rules for hooks
+
+- Always pass `--skip-hooks` in automation unless the hooks are known to be agent-safe.
+- Check `arc doctor` output if a hook gate fails unexpectedly — it will flag non-executable files.
+- Gate failures (exit 7) are retryable by fixing the root cause; `--skip-hooks` is the escape hatch.
