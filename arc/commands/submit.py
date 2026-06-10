@@ -63,10 +63,14 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
                 continue
 
             _shared.run_lifecycle_hook(
-                root, data, "pre-submit",
+                root,
+                data,
+                "pre-submit",
                 branch=name,
                 extra={"pr_number": b["pr_number"], "draft": use_draft},
-                skip=skip_hooks, output_json=output_json, quiet=quiet,
+                skip=skip_hooks,
+                output_json=output_json,
+                quiet=quiet,
             )
 
             subject = git.get_commit_subject(name)
@@ -101,10 +105,14 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
 
             if entry:
                 _shared.run_lifecycle_hook(
-                    root, data, "post-submit",
+                    root,
+                    data,
+                    "post-submit",
                     branch=name,
                     extra={"pr_number": entry["pr_number"], "pr_url": entry["pr_url"]},
-                    skip=skip_hooks, output_json=output_json, quiet=quiet,
+                    skip=skip_hooks,
+                    output_json=output_json,
+                    quiet=quiet,
                 )
 
         if not dry_run:
@@ -190,10 +198,14 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
 
     try:
         _shared.run_lifecycle_hook(
-            root, data, "pre-land",
+            root,
+            data,
+            "pre-land",
             branch=target,
             extra={"pr_number": b["pr_number"]},
-            skip=skip_hooks, output_json=output_json, quiet=quiet,
+            skip=skip_hooks,
+            output_json=output_json,
+            quiet=quiet,
         )
         pre_shas = {n: git.get_sha(n) for n in above}
         for ab in above:
@@ -221,10 +233,14 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
         st.save(root, data)
 
         _shared.run_lifecycle_hook(
-            root, data, "post-land",
+            root,
+            data,
+            "post-land",
             branch=target,
             extra={"pr_number": b["pr_number"]},
-            skip=skip_hooks, output_json=output_json, quiet=quiet,
+            skip=skip_hooks,
+            output_json=output_json,
+            quiet=quiet,
         )
 
         if not quiet:

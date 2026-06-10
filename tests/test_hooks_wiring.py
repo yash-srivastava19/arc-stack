@@ -193,7 +193,9 @@ def test_submit_post_submit_receives_pr_context(tmp_path):
 def test_submit_legacy_config_hooks_still_work(tmp_path):
     """Backward compat: hooks.pre-submit shell commands in .arc/config.json."""
     _write_state(tmp_path, branches=[{"name": "feat/a", "pr_number": None, "revision": 0}])
-    (tmp_path / ".arc" / "config.json").write_text(_json.dumps({"hooks": {"pre-submit": ["exit 1"]}}))
+    (tmp_path / ".arc" / "config.json").write_text(
+        _json.dumps({"hooks": {"pre-submit": ["exit 1"]}})
+    )
     p = _patched_submit_env(tmp_path)
     with p[0], p[1], p[2], p[3], p[4], p[5] as mock_create, p[6]:
         result = CliRunner().invoke(cli, ["submit"])
