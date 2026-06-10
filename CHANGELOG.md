@@ -27,6 +27,13 @@ All notable changes to arc are documented here.
 
 ---
 
+## [0.4.0] — 2026-06-09
+
+### Added
+- **`arc dashboard`** — interactive TUI for stacked PRs (textual): stack tree, PR status, CI state, and actions in one view
+
+---
+
 ## [0.3.1] — 2026-06-07
 
 ### Added
