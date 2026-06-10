@@ -1,3 +1,5 @@
+"""Configuration and introspection: config get/set/list, schema."""
+
 from __future__ import annotations
 
 import sys

@@ -1,3 +1,5 @@
+"""Local-remote reconciliation: sync, push, restack, rebase."""
+
 from __future__ import annotations
 
 import sys

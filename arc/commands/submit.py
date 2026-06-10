@@ -1,3 +1,5 @@
+"""PR lifecycle: submit (create/update PRs), land (merge + restack)."""
+
 from __future__ import annotations
 
 import json as _json

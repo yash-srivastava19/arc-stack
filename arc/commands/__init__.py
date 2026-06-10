@@ -7,6 +7,8 @@ patch one canonical target (arc.commands._shared.*).
 Exception: the err/out Console singletons may be imported directly; they are shared instances.
 """
 
+import click
+
 from arc.commands.config import config_group, schema_cmd
 from arc.commands.diagnostics import (
     completions_cmd,
@@ -29,7 +31,7 @@ from arc.commands.stack import (
 from arc.commands.submit import land_cmd, submit_cmd
 from arc.commands.sync import push_cmd, rebase_cmd, restack_cmd, sync_cmd
 
-ALL_COMMANDS: list = [
+ALL_COMMANDS: list[click.Command] = [
     setup,
     doctor_cmd,
     completions_cmd,

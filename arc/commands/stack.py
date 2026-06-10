@@ -1,3 +1,5 @@
+"""Local stack mutation and inspection: init, new, add, status, amend, drop, stack analyze."""
+
 from __future__ import annotations
 
 import json as _json

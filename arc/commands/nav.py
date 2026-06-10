@@ -1,3 +1,5 @@
+"""Stack navigation: checkout, up, down, top, bottom."""
+
 from __future__ import annotations
 
 import sys

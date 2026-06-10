@@ -1,3 +1,5 @@
+"""Environment and meta commands: setup, doctor, completions, upgrade, report, dashboard."""
+
 from __future__ import annotations
 
 import os
