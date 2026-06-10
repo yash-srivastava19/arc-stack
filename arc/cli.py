@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json as _json
-import os
 import subprocess as _subprocess
 import sys
 
@@ -53,94 +52,6 @@ def cli(ctx, no_color, no_input, verbose):
         import os
 
         os.environ["NO_COLOR"] = "1"
-
-
-@cli.command()
-@click.option("-q", "--quiet", is_flag=True)
-def setup(quiet):
-    """Check environment and configure git for arc."""
-    if not _shared._check_setup():
-        sys.exit(6)
-    git.set_config("rerere.enabled", "true", global_=True)
-    if not quiet:
-        err.print("git rerere enabled.")
-        err.print("Ready. cd into a repo and run 'arc init' to create a stack.")
-
-
-@cli.command("doctor")
-def doctor_cmd() -> None:
-    """Check environment and report what's wrong."""
-    ok = True
-
-    def check(label: str, passed: bool, fix: str) -> None:
-        nonlocal ok
-        if passed:
-            err.print(f"✓ {label}", style="green")
-        else:
-            err.print(f"✗ {label}", style="red")
-            err.print(f"  fix: {fix}", style="dim")
-            ok = False
-
-    check("git installed", git.is_installed(), "install git from https://git-scm.com")
-
-    gh_ok = github.is_installed()
-    check("gh installed", gh_ok, "install from https://cli.github.com")
-    if gh_ok:
-        check("gh authenticated", github.is_authenticated(), "run gh auth login")
-
-    err.print(f"✓ arc version {__version__}", style="green")
-
-    root = None
-    try:
-        root = git.find_repo_root()
-    except RuntimeError:
-        pass
-
-    if root:
-        state_path = root / ".arc" / "state.json"
-        if state_path.exists():
-            try:
-                data = st.load(root)
-                n = len(data.get("branches", []))
-                err.print(f"✓ stack initialized ({n} branches)", style="green")
-            except Exception as e:
-                err.print(f"✗ .arc/state.json is corrupt: {e}", style="red")
-                ok = False
-        else:
-            err.print("  stack not initialized in this repo (run arc init)", style="dim")
-
-    if not ok:
-        sys.exit(1)
-
-
-@cli.command("completions")
-@click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]))
-def completions_cmd(shell: str) -> None:
-    """Print shell completion script.
-
-    Usage:
-      bash: eval "$(arc completions bash)"
-      zsh:  eval "$(arc completions zsh)"
-      fish: arc completions fish | source
-    """
-    import subprocess as _sub
-
-    env = {**os.environ, "_ARC_COMPLETE": f"{shell}_source"}
-    result = _sub.run(["arc"], env=env, capture_output=True, text=True)
-    print(result.stdout, end="")
-
-
-@cli.command("upgrade")
-def upgrade_cmd() -> None:
-    """Upgrade arc to the latest version."""
-    import subprocess as _sub
-
-    # prefer uv tool upgrade, fall back to pip
-    if _sub.run(["uv", "--version"], capture_output=True).returncode == 0:
-        result = _sub.run(["uv", "tool", "upgrade", "arc-prs"], text=True)
-    else:
-        result = _sub.run(["pip", "install", "-U", "arc-prs"], text=True)
-    sys.exit(result.returncode)
 
 
 _JSON_SCHEMAS: dict[str, dict] = {
@@ -990,85 +901,6 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
 
 
 # ---------------------------------------------------------------------------
-# Task 16: Navigation commands
-# ---------------------------------------------------------------------------
-
-
-@cli.command("checkout")
-@click.argument("target")
-def checkout_cmd(target):
-    """Check out a branch by name or index (1-based)."""
-    root = git.find_repo_root()
-    data = _shared._load_state_or_exit(root)
-    if target.isdigit():
-        name = ops.branch_at_index(data, int(target))
-        if not name:
-            err.print(f"No branch at index {target}.")
-            sys.exit(5)
-    else:
-        name = st.apply_prefix(data, target)
-        if not st.get_branch(data, name):
-            err.print(f"{name!r} is not in the stack.")
-            sys.exit(5)
-    git.checkout(name)
-    err.print(f"Switched to {name}.")
-
-
-def _navigate(n: int, direction: int) -> None:
-    root = git.find_repo_root()
-    data = _shared._load_state_or_exit(root)
-    names = st.branch_names(data)
-    current = git.current_branch()
-    if current not in names:
-        err.print(f"{current!r} is not in the stack.")
-        sys.exit(5)
-    idx = names.index(current) + direction * n
-    idx = max(0, min(idx, len(names) - 1))
-    git.checkout(names[idx])
-    err.print(f"Switched to {names[idx]}.")
-
-
-@cli.command("up")
-@click.argument("n", default=1, type=int)
-def up_cmd(n):
-    """Move up n branches toward the top."""
-    _navigate(n, 1)
-
-
-@cli.command("down")
-@click.argument("n", default=1, type=int)
-def down_cmd(n):
-    """Move down n branches toward the trunk."""
-    _navigate(n, -1)
-
-
-@cli.command("top")
-def top_cmd():
-    """Jump to the topmost branch."""
-    root = git.find_repo_root()
-    data = _shared._load_state_or_exit(root)
-    names = st.branch_names(data)
-    if not names:
-        err.print("Stack is empty.")
-        return
-    git.checkout(names[-1])
-    err.print(f"Switched to {names[-1]}.")
-
-
-@cli.command("bottom")
-def bottom_cmd():
-    """Jump to the bottommost branch."""
-    root = git.find_repo_root()
-    data = _shared._load_state_or_exit(root)
-    names = st.branch_names(data)
-    if not names:
-        err.print("Stack is empty.")
-        return
-    git.checkout(names[0])
-    err.print(f"Switched to {names[0]}.")
-
-
-# ---------------------------------------------------------------------------
 # Task 11: arc stack analyze
 # ---------------------------------------------------------------------------
 
@@ -1135,75 +967,7 @@ def stack_analyze_cmd(output_json: bool) -> None:
         out.print(f"CRITICAL PATH: {' → '.join(analysis.critical_path)}")
 
 
-# ---------------------------------------------------------------------------
-# Task 3: arc report
-# ---------------------------------------------------------------------------
+from arc.commands import ALL_COMMANDS  # noqa: E402
 
-
-@cli.command("report")
-@click.option("--bug", is_flag=True)
-@click.option("--feedback", is_flag=True)
-@click.option("--message", type=str, default=None)
-@click.option("-n", "--dry-run", is_flag=True)
-@click.option("-q", "--quiet", is_flag=True)
-def report_cmd(bug, feedback, message, dry_run, quiet):
-    """Report a bug or share feedback."""
-    from arc import report as report_module
-
-    git.find_repo_root()
-
-    # Determine issue type
-    issue_type = "bug" if bug else ("feedback" if feedback else "bug")
-
-    # Non-TTY requires --message
-    if not sys.stdin.isatty() and not message:
-        err.print("Non-interactive mode requires --message flag.")
-        err.print('Usage: arc report --bug --message "description"')
-        sys.exit(5)
-
-    # Get user text (either from --message or editor)
-    if message:
-        user_text = message
-    else:
-        # TTY: open editor
-        template = report_module.collect_env_context() + "\n---\n\nDescribe the issue here..."
-        user_text = _shared._open_editor(template)
-        if not user_text or not user_text.strip():
-            err.print("Aborted: no issue description provided.")
-            sys.exit(1)
-
-    # Format issue body
-    body = report_module.format_issue_body(user_text, error_message=None)
-
-    # Dry-run: print and exit
-    if dry_run:
-        out.print(body)
-        return
-
-    # Create issue
-    title = f"[{issue_type}] User report"
-    result = github.create_issue(title, body)
-
-    if result:
-        if not quiet:
-            err.print(f"Issue #{result['number']} created: {result['html_url']}")
-        out.print(result["html_url"])
-    else:
-        err.print("Failed to create issue.")
-        sys.exit(4)
-
-
-# ---------------------------------------------------------------------------
-# Task 5: arc dashboard
-# ---------------------------------------------------------------------------
-
-
-@cli.command("dashboard")
-@click.pass_context
-def dashboard_cmd(ctx) -> None:
-    """Launch interactive dashboard for stacked PRs."""
-    import arc.git as git
-    from arc.dashboard import run_dashboard
-
-    root = git.find_repo_root()
-    run_dashboard(root)
+for _cmd in ALL_COMMANDS:
+    cli.add_command(_cmd)
