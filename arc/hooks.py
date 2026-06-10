@@ -91,14 +91,25 @@ def run_hook(event: str, ctx: HookContext, hooks_dir: Path) -> HookResult:
     if not path.is_file() or not os.access(path, os.X_OK):
         return HookResult(ok=True, ran=False)
     env = {**os.environ, **ctx.as_env()}
-    proc = subprocess.run(
-        [str(path)],
-        input=ctx.as_json(),
-        env=env,
-        capture_output=True,
-        text=True,
-        cwd=ctx.root,
-    )
+    try:
+        proc = subprocess.run(
+            [str(path)],
+            input=ctx.as_json(),
+            env=env,
+            capture_output=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=ctx.root,
+        )
+    except OSError as exc:
+        # Malformed hooks (missing/CRLF shebang, noexec mount) must fail the
+        # gate, not crash the host command with a traceback.
+        return HookResult(
+            ok=hook_type(event) is HookType.NOTIFY,
+            stderr=f"failed to execute hook: {exc}",
+            exit_code=126,
+            ran=True,
+        )
     ok = proc.returncode == 0 or hook_type(event) is HookType.NOTIFY
     return HookResult(
         ok=ok,

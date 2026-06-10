@@ -144,6 +144,43 @@ def test_hook_runs_with_repo_root_cwd(tmp_path):
     assert capture.read_text().strip() == str(tmp_path)
 
 
+def test_hook_without_shebang_fails_gate_without_crashing(tmp_path):
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir(parents=True)
+    path = hooks_dir / "pre-submit"
+    path.write_text("echo no shebang\n")  # no #! line -> OSError(ENOEXEC)
+    path.chmod(0o755)
+    res = run_hook("pre-submit", _ctx(tmp_path), hooks_dir)
+    assert res.ran and not res.ok and res.exit_code == 126
+    assert "failed to execute hook" in res.stderr
+
+
+def test_hook_exec_failure_is_nonfatal_for_notify(tmp_path):
+    hooks_dir = tmp_path / "hooks"
+    hooks_dir.mkdir(parents=True)
+    path = hooks_dir / "post-submit"
+    path.write_text("echo no shebang\n")
+    path.chmod(0o755)
+    res = run_hook("post-submit", _ctx(tmp_path), hooks_dir)
+    assert res.ran and res.ok and res.exit_code == 126
+
+
+def test_non_utf8_hook_output_does_not_crash(tmp_path):
+    hooks_dir = tmp_path / "hooks"
+    _write_hook(hooks_dir, "pre-submit", "printf '\\xff\\xfe broken'; exit 0")
+    res = run_hook("pre-submit", _ctx(tmp_path), hooks_dir)
+    assert res.ok and res.ran
+    assert "broken" in res.stdout
+
+
+def test_hook_inherits_parent_environment(tmp_path):
+    hooks_dir = tmp_path / "hooks"
+    capture = tmp_path / "captured-path"
+    _write_hook(hooks_dir, "pre-submit", f'echo "$PATH" > "{capture}"')
+    run_hook("pre-submit", _ctx(tmp_path), hooks_dir)
+    assert capture.read_text().strip()  # PATH passed through os.environ
+
+
 def test_hooks_module_imports_stdlib_only():
     """Dependency rule: arc/hooks.py must be extractable (roadmap 8b)."""
     import ast
