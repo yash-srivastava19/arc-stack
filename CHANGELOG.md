@@ -4,6 +4,29 @@ All notable changes to arc are documented here.
 
 ---
 
+## [0.5.0] — 2026-06-10
+
+### Added
+- **Lifecycle hooks** — executables in `.arc/hooks/` fire on 8 events
+  (pre/post × submit, land, sync, push). `pre-*` gates abort on non-zero exit
+  (code 7); `post-*` notifications never block. Context via env vars + JSON on
+  stdin. `arc init` scaffolds samples; `arc doctor` flags non-executable hooks;
+  `--skip-hooks` now on submit, land, sync, and push. Dry-run never fires hooks.
+- CONTRIBUTING.md — dev setup, checks, code layout, conventions
+
+### Fixed
+- `arc --version` reported a stale hardcoded version (0.3.2 on a 0.4.0
+  install); version is now single-sourced from package metadata
+- Stale `uv.lock` (was still pinned to 0.3.2)
+
+### Internal
+- `arc/cli.py` (1345 lines) split into `arc/commands/` modules by
+  responsibility; `cli.py` is now a thin registration shell
+- `arc/hooks.py` is stdlib-only and extraction-ready; hook exec failures
+  (bad shebang, non-UTF8 output) can never crash the host command
+
+---
+
 ## [0.3.1] — 2026-06-07
 
 ### Added
