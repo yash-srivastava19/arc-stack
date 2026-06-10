@@ -84,7 +84,6 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
             body = ops.build_pr_body(body_text, entries, data["base"])
 
             existing = github.get_pr(name)
-            entry = None
             if not existing:
                 pr = github.create_pr(name, base, title, body, draft=use_draft)
                 data = st.update_branch(data, name, pr_number=pr["number"])
@@ -103,17 +102,16 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
                 }
                 updated.append(entry)
 
-            if entry:
-                _shared.run_lifecycle_hook(
-                    root,
-                    data,
-                    "post-submit",
-                    branch=name,
-                    extra={"pr_number": entry["pr_number"], "pr_url": entry["pr_url"]},
-                    skip=skip_hooks,
-                    output_json=output_json,
-                    quiet=quiet,
-                )
+            _shared.run_lifecycle_hook(
+                root,
+                data,
+                "post-submit",
+                branch=name,
+                extra={"pr_number": entry["pr_number"], "pr_url": entry["pr_url"]},
+                skip=skip_hooks,
+                output_json=output_json,
+                quiet=quiet,
+            )
 
         if not dry_run:
             st.save(root, data)
