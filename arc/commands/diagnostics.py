@@ -80,7 +80,11 @@ def doctor_cmd() -> None:
                     ok = False
             known = set(EVENTS) | {"README.md"}
             for entry in sorted(hooks_dir.iterdir()):
-                if entry.name not in known and not entry.name.endswith(".sample"):
+                if (
+                    entry.is_file()
+                    and entry.name not in known
+                    and not entry.name.endswith(".sample")
+                ):
                     err.print(
                         f"  .arc/hooks/{entry.name} is not a known hook event (ignored)",
                         style="dim",

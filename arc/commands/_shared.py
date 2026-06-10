@@ -201,3 +201,5 @@ def run_lifecycle_hook(
         )
     elif result.exit_code != 0 and not quiet:
         err.print(f"→ {event} hook exited {result.exit_code} (ignored)", style="dim")
+        if result.stderr.strip():
+            err.print(result.stderr.rstrip(), style="dim")

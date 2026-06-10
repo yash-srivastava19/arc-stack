@@ -70,6 +70,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
             data,
             "pre-sync",
             branch=git.current_branch(),
+            # sync has no dry-run early return, so dry-run is excluded here
             skip=skip_hooks or dry_run,
             output_json=output_json,
             quiet=quiet,

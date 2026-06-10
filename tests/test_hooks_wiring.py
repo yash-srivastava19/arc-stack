@@ -206,6 +206,36 @@ def test_submit_post_submit_receives_pr_context(tmp_path):
     assert capture.read_text().strip() == "99|https://github.com/x/y/pull/99"
 
 
+def test_submit_post_submit_fires_on_update_path(tmp_path):
+    """post-submit must also fire when the PR already exists (update, not create)."""
+    _write_state(tmp_path, branches=[{"name": "feat/a", "pr_number": 55, "revision": 2}])
+    capture = tmp_path / "captured"
+    _write_hook(tmp_path, "post-submit", f'echo "$ARC_PR_NUMBER|$ARC_PR_URL" > "{capture}"')
+    existing = {"number": 55, "url": "https://github.com/x/y/pull/55", "state": "OPEN"}
+    p = _patched_submit_env(tmp_path, existing_pr=existing)
+    from unittest.mock import patch
+
+    with p[0], p[1], p[2], p[3], p[4], p[5], p[6], patch("arc.github.update_pr_body"):
+        result = CliRunner().invoke(cli, ["submit"])
+    assert result.exit_code == 0
+    assert capture.read_text().strip() == "55|https://github.com/x/y/pull/55"
+
+
+def test_gate_failure_json_payload_shape(tmp_path):
+    """--json gate failure emits the structured error envelope on stdout."""
+    _write_state(tmp_path)
+    _write_hook(tmp_path, "pre-push", "exit 1")
+    p_root, p_branch, p_sha, p_push = _patched_push_env(tmp_path)
+    with p_root, p_branch, p_sha, p_push:
+        result = CliRunner().invoke(cli, ["push", "--json"])
+    assert result.exit_code == 7
+    payload = _json.loads(result.output[result.output.index("{") :])
+    assert payload["ok"] is False
+    assert payload["exit_code"] == 7
+    assert "pre-push hook failed" in payload["error"]
+    assert "--skip-hooks" in payload["hint"]
+
+
 def test_submit_legacy_config_hooks_still_work(tmp_path):
     """Backward compat: hooks.pre-submit shell commands in .arc/config.json."""
     _write_state(tmp_path, branches=[{"name": "feat/a", "pr_number": None, "revision": 0}])
