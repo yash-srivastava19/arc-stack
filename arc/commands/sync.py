@@ -156,7 +156,8 @@ def sync_cmd(dry_run, quiet, output_json):
 @click.option("-n", "--dry-run", is_flag=True)
 @click.option("-q", "--quiet", is_flag=True)
 @click.option("--json", "output_json", is_flag=True)
-def push_cmd(dry_run, quiet, output_json):
+@click.option("--skip-hooks", is_flag=True)
+def push_cmd(dry_run, quiet, output_json, skip_hooks):
     """Force-push all stack branches to remote."""
     if not output_json and not _shared._is_tty():
         output_json = True
@@ -172,6 +173,11 @@ def push_cmd(dry_run, quiet, output_json):
                 sha = git.get_sha(name)
                 err.print(f"\\[dry-run] push {name} ({sha[:8]})")
             return
+        current = git.current_branch()
+        _shared.run_lifecycle_hook(
+            root, data, "pre-push",
+            branch=current, skip=skip_hooks, output_json=output_json, quiet=quiet,
+        )
         git.force_push(names)
         for name in names:
             branch_entry = st.get_branch(data, name)
@@ -179,6 +185,10 @@ def push_cmd(dry_run, quiet, output_json):
             current_rev = branch_entry["revision"]
             data = st.update_branch(data, name, revision=current_rev + 1)
         st.save(root, data)
+        _shared.run_lifecycle_hook(
+            root, data, "post-push",
+            branch=current, skip=skip_hooks, output_json=output_json, quiet=quiet,
+        )
         if not quiet:
             err.print(f"Pushed {len(names)} branches. Run 'arc submit' to create pull requests.")
         _shared._maybe_print_periodic_hint(root)
