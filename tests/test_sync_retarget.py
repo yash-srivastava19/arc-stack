@@ -2,7 +2,7 @@ import subprocess
 from unittest.mock import MagicMock, Mock, patch
 
 from arc import git, github
-from arc.cli import detect_merged_branches, retarget_dependent_prs
+from arc.commands.sync import detect_merged_branches, retarget_dependent_prs
 
 
 def mock_result(stdout="", returncode=0, stderr=""):
@@ -204,7 +204,7 @@ def test_sync_prunes_merged_branch_from_stack(arc_root, monkeypatch):
     import arc.github as _gh
 
     monkeypatch.setattr(_gh, "pr_is_merged", lambda n: n == 25)
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
     from click.testing import CliRunner
 
     from arc.cli import cli
