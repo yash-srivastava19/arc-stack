@@ -118,10 +118,19 @@ def upgrade_cmd() -> None:
 
     # prefer uv tool upgrade, fall back to pip
     if _sub.run(["uv", "--version"], capture_output=True).returncode == 0:
-        result = _sub.run(["uv", "tool", "upgrade", "arc-prs"], text=True)
+        result = _sub.run(["uv", "tool", "upgrade", "arc-prs"], capture_output=True, text=True)
     else:
-        result = _sub.run(["pip", "install", "-U", "arc-prs"], text=True)
-    sys.exit(result.returncode)
+        result = _sub.run(["pip", "install", "-U", "arc-prs"], capture_output=True, text=True)
+    if result.returncode != 0:
+        output = (result.stderr or result.stdout).strip()
+        if output:
+            err.print(output)
+        err.print(
+            "hint:  install with `uv tool install arc-prs` or `pip install arc-prs`",
+            style="dim",
+        )
+        sys.exit(1)
+    err.print("arc upgraded successfully.")
 
 
 @click.command("report")

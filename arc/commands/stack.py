@@ -149,7 +149,14 @@ def status_cmd(output_json, plain, quiet):
     current = git.current_branch()
     names = st.branch_names(data)
 
-    commit_counts = {n: git.commit_count(data["base"], n) for n in names}
+    try:
+        commit_counts = {n: git.commit_count(data["base"], n) for n in names}
+    except Exception:
+        _shared._exit_json_error(
+            f"base branch '{data['base']}' not found — run `arc init --base <branch>` to fix",
+            exit_code=1,
+            output_json=output_json,
+        )
     needs_rebase_flags = {n: not git.is_ancestor(ops.parent_branch(data, n), n) for n in names}
     pr_info = {}
     for b in data["branches"]:
