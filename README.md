@@ -1,3 +1,8 @@
+[![PyPI](https://img.shields.io/pypi/v/arc-prs.svg)](https://pypi.org/project/arc-prs/)
+[![Python](https://img.shields.io/pypi/pyversions/arc-prs.svg)](https://pypi.org/project/arc-prs/)
+[![CI](https://github.com/yash-srivastava19/arc-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/yash-srivastava19/arc-stack/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 # arc
 
 Your PR has 47 files changed. Nobody's going to review that.
@@ -18,6 +23,14 @@ main
 ```
 
 One command keeps the whole stack current. Another opens all the PRs — with a stack map in each description so reviewers can navigate. When a PR merges, `arc land` rebases everything above it and removes it from the stack.
+
+**What arc handles for you:**
+- Cascade rebases — one `arc sync` propagates a change from the bottom branch to the top
+- PR creation and updates — `arc submit` opens all PRs with correct bases and injects a stack map into each description
+- Squash-merge recovery — detects squash-merged branches and restacks automatically
+- Conflict prediction — warns before rebasing when adjacent branches touch the same files
+- Lifecycle hooks — gate or notify on any arc event via plain executables in `.arc/hooks/`
+- Scripting-friendly — `--json`, `--plain`, `--dry-run`, and structured exit codes on every command
 
 ---
 

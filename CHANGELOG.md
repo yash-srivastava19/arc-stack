@@ -4,6 +4,19 @@ All notable changes to arc are documented here.
 
 ---
 
+## [0.5.1] — 2026-06-14
+
+### Added
+- `LICENSE` file (MIT)
+- `SECURITY.md` — responsible disclosure via GitHub private advisories
+- `.github/dependabot.yml` — weekly updates for pip deps and GitHub Actions
+- `arc/py.typed` marker — signals typed package to mypy/pyright consumers
+- PyPI metadata: `license`, `keywords`, `classifiers`, `[project.urls]`
+- README badge row (PyPI version, Python versions, CI status, license)
+- README features summary list
+
+---
+
 ## [0.5.0] — 2026-06-10
 
 ### Added
