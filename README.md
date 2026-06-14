@@ -159,6 +159,20 @@ This means `git log` on the landed commits still traces back to the PR.
 
 `arc submit` runs these before touching GitHub. Any non-zero exit aborts. Pass `--skip-hooks` to bypass.
 
+### Lifecycle hooks
+
+For richer automation, drop executable files into `.arc/hooks/<event>`. Arc fires 8 events: `pre-submit`, `post-submit`, `pre-land`, `post-land`, `pre-sync`, `post-sync`, `pre-push`, and `post-push`. `pre-*` hooks are gates — a non-zero exit aborts the command (exit code 7). `post-*` hooks are notifications — the exit code is ignored. Each hook receives context via environment variables (`ARC_EVENT`, `ARC_BRANCH`, `ARC_BASE`, …) and a JSON object on stdin.
+
+```bash
+$ cat .arc/hooks/pre-submit
+#!/bin/sh
+exec ruff check .        # lint gate before every PR create/update
+$ chmod +x .arc/hooks/pre-submit
+$ arc submit             # → running pre-submit hook
+```
+
+Run `arc init` to scaffold `.arc/hooks/` with samples and a full event table in `.arc/hooks/README.md`.
+
 **Preview destructive operations** before running them:
 
 ```bash
