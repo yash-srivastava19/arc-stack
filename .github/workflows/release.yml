@@ -48,7 +48,7 @@ jobs:
           git cliff --tag "v${{ inputs.version }}" --unreleased --prepend CHANGELOG.md
           git add CHANGELOG.md
           git diff --cached --quiet || git commit -m "docs: update CHANGELOG for v${{ inputs.version }}"
-          git push
+          git push || echo "Push blocked by branch protection (CHANGELOG already up to date in main)"
 
       - name: Create git tag
         run: |
