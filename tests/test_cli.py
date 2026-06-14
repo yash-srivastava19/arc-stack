@@ -21,10 +21,14 @@ def _write_state(tmp_path, base="main", prefix=None, branches=None):
 
 
 def test_version():
+    from arc import __version__
+
     runner = CliRunner()
     result = runner.invoke(cli, ["--version"])
     assert result.exit_code == 0
-    assert "0.3.2" in result.output
+    assert __version__ in result.output
+    # Guard against the hardcoded-literal regression (shipped 0.4.0 reporting "0.3.2")
+    assert "0.3.2" not in result.output
 
 
 def test_help():
@@ -290,7 +294,7 @@ def test_status_json(tmp_path):
 
 
 def test_status_human_exits_0(tmp_path, monkeypatch):
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)  # force human-readable output
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)  # force human-readable output
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
     with (
@@ -314,7 +318,7 @@ def test_status_shows_hint_when_needs_rebase(tmp_path):
         patch("arc.git.commit_count", return_value=2),
         patch("arc.git.is_ancestor", return_value=False),
         patch("arc.github.get_pr", return_value=None),
-        patch("arc.cli._is_tty", return_value=True),
+        patch("arc.commands._shared._is_tty", return_value=True),
     ):
         result = runner.invoke(cli, ["status"])
     assert result.exit_code == 0
@@ -938,8 +942,8 @@ def test_periodic_hint_printed_when_random_hits(tmp_path):
         patch("arc.git.commit_count", return_value=2),
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.github.get_pr", return_value=None),
-        patch("arc.cli.random.randint", return_value=1),
-        patch("arc.cli._is_tty", return_value=True),
+        patch("arc.commands._shared.random.randint", return_value=1),
+        patch("arc.commands._shared._is_tty", return_value=True),
     ):
         result = runner.invoke(cli, ["status"])
     assert "arc report --feedback" in result.output
@@ -955,7 +959,7 @@ def test_periodic_hint_not_printed_when_random_misses(tmp_path):
         patch("arc.git.commit_count", return_value=2),
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.github.get_pr", return_value=None),
-        patch("arc.cli.random.randint", return_value=2),
+        patch("arc.commands._shared.random.randint", return_value=2),
     ):
         result = runner.invoke(cli, ["status"])
     assert "arc report --feedback" not in result.output
@@ -975,7 +979,7 @@ def test_periodic_hint_disabled_by_config(tmp_path):
         patch("arc.git.commit_count", return_value=2),
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.github.get_pr", return_value=None),
-        patch("arc.cli.random.randint", return_value=1),
+        patch("arc.commands._shared.random.randint", return_value=1),
     ):
         result = runner.invoke(cli, ["status"])
     assert "arc report --feedback" not in result.output
@@ -995,7 +999,7 @@ def test_periodic_hint_disabled_when_feedback_disabled(tmp_path):
         patch("arc.git.commit_count", return_value=2),
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.github.get_pr", return_value=None),
-        patch("arc.cli.random.randint", return_value=1),
+        patch("arc.commands._shared.random.randint", return_value=1),
     ):
         result = runner.invoke(cli, ["status"])
     assert "arc report --feedback" not in result.output
@@ -1023,7 +1027,7 @@ def test_status_auto_json_when_piped(arc_root, monkeypatch):
     with (
         patch("arc.git.find_repo_root", return_value=arc_root),
         patch("arc.git.current_branch", return_value="main"),
-        patch("arc.cli._is_tty", return_value=False),
+        patch("arc.commands._shared._is_tty", return_value=False),
     ):
         result = CliRunner().invoke(cli, ["status"])
     data = json.loads(result.output)
@@ -1032,7 +1036,9 @@ def test_status_auto_json_when_piped(arc_root, monkeypatch):
 
 def test_status_no_init_gives_helpful_message(tmp_path, monkeypatch):
     """Running arc status without arc init should suggest arc init, not crash."""
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)  # force human-readable error output
+    monkeypatch.setattr(
+        "arc.commands._shared._is_tty", lambda: True
+    )  # force human-readable error output
     (tmp_path / ".git").mkdir()
     monkeypatch.chdir(tmp_path)
     from click.testing import CliRunner
@@ -1118,7 +1124,7 @@ def test_restack_rebases_branch_onto_parent(arc_root, monkeypatch):
     )
     monkeypatch.setattr(_git, "checkout", lambda b: None)
     monkeypatch.setattr(_git, "current_branch", lambda: "feat/b")
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
     _save(
         arc_root,
         {
@@ -1181,7 +1187,7 @@ def test_sync_warns_on_predicted_conflicts(arc_root, monkeypatch):
     monkeypatch.setattr(_git, "checkout", lambda b: None)
     monkeypatch.setattr(_git, "is_ancestor", lambda a, b: True)
     monkeypatch.setattr(_git, "get_sha", lambda ref: "abc")
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
     from click.testing import CliRunner
 
     from arc.cli import cli
@@ -1230,7 +1236,7 @@ def test_sync_detects_squash_merged_branch(arc_root, monkeypatch):
     monkeypatch.setattr(_git, "delete_branch", lambda b, force=False: None)
     monkeypatch.setattr(_c, "predict_conflicts", lambda d, r: [])
     monkeypatch.setattr(_git, "get_sha", lambda ref: "abc")
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
     from click.testing import CliRunner
 
     from arc.cli import cli
@@ -1278,7 +1284,7 @@ def test_stack_analyze_shows_safe_to_land(arc_root, monkeypatch):
     monkeypatch.setattr("arc.git.is_installed", lambda: True)
     monkeypatch.setattr("arc.github.is_installed", lambda: True)
     monkeypatch.setattr("arc.github.is_authenticated", lambda: True)
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
     from click.testing import CliRunner
 
     from arc.cli import cli
@@ -1331,7 +1337,7 @@ def test_submit_prints_async_hint_when_parent_in_merge_queue(arc_root, monkeypat
         "get_pr_status",
         lambda n: {"approved": True, "ci_passing": True, "draft": False, "in_merge_queue": True},
     )
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
     from click.testing import CliRunner
 
     from arc.cli import cli
@@ -1423,7 +1429,7 @@ def test_no_input_flag_exits_instead_of_prompting(arc_root, monkeypatch):
     monkeypatch.setattr(_git, "is_installed", lambda: True)
     monkeypatch.setattr(_gh, "is_installed", lambda: True)
     monkeypatch.setattr(_gh, "is_authenticated", lambda: True)
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
     _save(
         arc_root,
         {
@@ -1454,7 +1460,7 @@ def test_no_input_flag_drop_exits_instead_of_prompting(arc_root, monkeypatch):
     from arc.state import save as _save
 
     monkeypatch.chdir(arc_root)
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
     _save(
         arc_root,
         {
@@ -1514,7 +1520,7 @@ def test_verbose_flag_prints_git_commands(arc_root, monkeypatch):
 
 def test_status_shows_merged_branch_hint(tmp_path, monkeypatch):
     """arc status shows a hint when a branch is merged."""
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
     _write_state(
         tmp_path,
         branches=[
@@ -1549,7 +1555,7 @@ def test_status_warns_on_stale_pr_base(arc_root, monkeypatch):
     from arc.state import save as _save
 
     monkeypatch.chdir(arc_root)
-    monkeypatch.setattr("arc.cli._is_tty", lambda: True)
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
     _save(
         arc_root,
         {
@@ -1601,3 +1607,38 @@ def test_status_warns_on_stale_pr_base(arc_root, monkeypatch):
     result = CliRunner().invoke(cli, ["status"])
     assert "stale" in result.output.lower() or "retarget" in result.output.lower()
     assert "feat/b" in result.output
+
+
+def test_cli_command_inventory_unchanged():
+    """The public CLI surface must not change during the v0.5.0 refactor."""
+    expected = {
+        "setup",
+        "doctor",
+        "completions",
+        "upgrade",
+        "schema",
+        "config",
+        "init",
+        "new",
+        "restack",
+        "add",
+        "status",
+        "sync",
+        "push",
+        "submit",
+        "land",
+        "amend",
+        "drop",
+        "rebase",
+        "checkout",
+        "up",
+        "down",
+        "top",
+        "bottom",
+        "stack",
+        "report",
+        "dashboard",
+    }
+    assert set(cli.commands.keys()) == expected
+    assert set(cli.commands["config"].commands.keys()) == {"get", "set", "list"}
+    assert set(cli.commands["stack"].commands.keys()) == {"analyze"}

@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import importlib.metadata
 import json
 import urllib.request
 from pathlib import Path
 
+from arc import __version__
+
 
 def current_version() -> str:
-    try:
-        return importlib.metadata.version("arc-prs")
-    except importlib.metadata.PackageNotFoundError:
-        return "unknown"
+    return __version__
 
 
 def latest_pypi_version(timeout: int = 2) -> str | None:
