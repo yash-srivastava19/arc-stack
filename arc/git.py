@@ -37,7 +37,13 @@ def default_branch(remote: str = "origin") -> str:
     for line in result.stdout.splitlines():
         if "HEAD branch" in line:
             return line.split(":", 1)[1].strip()
-    return "main"
+    # No remote (or remote unreachable) — probe common trunk names locally.
+    for candidate in ("main", "master", "trunk", "develop"):
+        if _run(["git", "branch", "--list", candidate], check=False).stdout.strip():
+            return candidate
+    # Last resort: current branch (user is likely on trunk during init).
+    symbolic = _run(["git", "symbolic-ref", "--short", "HEAD"], check=False)
+    return symbolic.stdout.strip() or "main"
 
 
 def branch_exists(name: str) -> bool:
