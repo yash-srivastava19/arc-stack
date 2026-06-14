@@ -3,7 +3,13 @@
 All notable changes to arc are documented here.
 
 ---
+## [0.5.0] — 2026-06-14
 
+### Infrastructure
+- Make git-cliff CHANGELOG push non-fatal when branch protection blocks direct push (#43) ([d11e0a2](https://github.com/yash-srivastava19/arc-stack/commit/d11e0a2d72d8d1d94d81e961fec666b77e298795))
+
+
+---
 ## [0.5.0] — 2026-06-10
 
 ### Added
