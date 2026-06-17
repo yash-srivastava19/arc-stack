@@ -107,7 +107,7 @@ def _clear_edit_state(root: Path) -> None:
         path.unlink()
 
 
-# ── Helper functions ──────────────────────────────────────────────────────────
+# ── Pure helper functions ─────────────────────────────────────────────────────
 
 from arc import git
 
