@@ -99,3 +99,67 @@ def test_get_amendment_summary_shape(git_repo):
     assert "x.py" in summary["files_changed"]
     assert summary["insertions"] == 2
     assert isinstance(summary["deletions"], int)
+
+
+import os as _os
+
+
+def _run_edit(args, cwd=None):
+    """Invoke edit_cmd via CliRunner, changing cwd if specified."""
+    from arc.commands.edit import edit_cmd
+    from click.testing import CliRunner
+    runner = CliRunner()
+    orig = _os.getcwd()
+    if cwd:
+        _os.chdir(cwd)
+    try:
+        result = runner.invoke(edit_cmd, args, catch_exceptions=False)
+    finally:
+        _os.chdir(orig)
+    return result
+
+
+@pytest.mark.git
+def test_edit_fails_with_nothing_to_amend(arc_stack):
+    from unittest.mock import patch
+    with patch("arc.commands.edit.git.get_staged_files", return_value=[]):
+        with patch("arc.commands.edit.git.find_repo_root", return_value=arc_stack):
+            with patch("arc.commands.edit.git.is_mid_rebase", return_value=False):
+                with patch("arc.commands.edit.git.current_branch", return_value="main"):
+                    result = _run_edit(["--json"])
+    assert result.exit_code == 1, result.output
+    data = json.loads(result.output)
+    assert data["ok"] is False
+    assert "nothing to amend" in data["error"]
+
+
+@pytest.mark.git
+def test_edit_fails_when_interactive_and_message(arc_stack):
+    from unittest.mock import patch
+    with patch("arc.commands.edit.git.find_repo_root", return_value=arc_stack):
+        with patch("arc.commands.edit.git.is_mid_rebase", return_value=False):
+            result = _run_edit(["--interactive", "--message", "fix", "--json"])
+    assert result.exit_code == 1, result.output
+    data = json.loads(result.output)
+    assert "mutually exclusive" in data["error"]
+
+
+@pytest.mark.git
+def test_edit_fails_when_mid_rebase(arc_stack):
+    from unittest.mock import patch
+    with patch("arc.commands.edit.git.find_repo_root", return_value=arc_stack):
+        with patch("arc.commands.edit.git.is_mid_rebase", return_value=True):
+            result = _run_edit(["--message", "fix", "--json"])
+    assert result.exit_code == 1, result.output
+    data = json.loads(result.output)
+    assert "mid-rebase" in data["error"]
+
+
+@pytest.mark.git
+def test_edit_continue_fails_when_no_state(arc_stack):
+    from unittest.mock import patch
+    with patch("arc.commands.edit.git.find_repo_root", return_value=arc_stack):
+        result = _run_edit(["--continue", "--json"])
+    assert result.exit_code == 1, result.output
+    data = json.loads(result.output)
+    assert "no edit in progress" in data["error"]
