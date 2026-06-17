@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import json as _json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal, TypedDict
 
 import click
 
-from arc import git
+from arc import git, ops
 from arc.commands import _shared
-from arc.commands._shared import err
+from arc.commands._shared import err, out
 
 # ── Public TypedDicts (JSON API shapes) ──────────────────────────────────────
 
@@ -149,6 +150,67 @@ def _get_amendment_summary(old_sha: str, new_sha: str) -> AmendmentSummary:
     )
 
 
+def _do_amend(
+    target: str,
+    message: str | None,
+    mode: Literal["message", "staged", "interactive"],
+    quiet: bool,
+) -> str:
+    """Apply the amendment. Returns the new HEAD SHA. Must be called while on target branch."""
+    if mode == "interactive":
+        import subprocess as _sub
+
+        _sub.run(["git", "rebase", "-i", "HEAD~1"], check=True)
+    elif mode == "staged" and message:
+        git.amend_message(message)
+    elif mode == "staged":
+        git.amend_staged()
+    else:  # mode == "message"
+        git.amend_message(message)
+    return git.get_sha("HEAD")
+
+
+def _restack_upstack(
+    branches: list[str],
+    original_shas: dict[str, str],
+    data: dict,
+    root: Path,
+    quiet: bool = False,
+    output_json: bool = False,
+) -> tuple[list[str], str | None, str | None]:
+    """Restack branches in order onto their updated parents.
+
+    For each branch, computes:
+      - new_base: current tip of the parent branch (updated by prior restacks)
+      - old_base: original tip of the parent branch (from original_shas)
+    Then runs: git rebase --onto new_base old_base branch
+
+    Returns (restacked, conflict_branch, conflict_sha).
+    conflict_branch is None on full success.
+    """
+    restacked: list[str] = []
+    for branch in branches:
+        parent = ops.parent_branch(data, branch)
+        new_base = git.get_sha(parent)
+        old_base = original_shas[parent]
+
+        if not quiet and not output_json:
+            err.print(f"→ restacking {branch}...", end=" ")
+
+        result = git.rebase_onto(new_base, old_base, branch)
+        if result.returncode != 0:
+            conflict_sha = git.get_sha("HEAD") if not git.is_mid_rebase(root) else ""
+            if not quiet and not output_json:
+                err.print("CONFLICT", style="red")
+            return restacked, branch, conflict_sha
+
+        restacked.append(branch)
+        if not quiet and not output_json:
+            err.print("✓", style="green")
+
+    return restacked, None, None
+
+
 # ── Command ───────────────────────────────────────────────────────────────────
 
 
@@ -254,9 +316,149 @@ def edit_cmd(
             output_json=output_json,
         )
 
-    # ── Stub: filled in later PRs ─────────────────────────────────────────────
-    err.print(f"arc edit: pre-flight passed for {target!r} (mode={mode})", style="dim")
-    sys.exit(0)
+    old_sha = git.get_sha(target)
+    upstack = ops.upstack_branches(data, target)
+
+    # ── Dry run ───────────────────────────────────────────────────────────────
+    if dry_run:
+        from arc import conflicts as _conf
+
+        preds = _conf.predict_conflicts(data, root)
+        predicted = [
+            PredictedConflict(branch=p["branch"], files=p["shared_files"])
+            for p in preds
+            if p["branch"] in upstack
+        ]
+        dry_result: EditDryRunResult = {
+            "ok": True,
+            "state": "dry_run",
+            "mode": mode,
+            "branch": target,
+            "current_sha": old_sha,
+            "would_amend": True,
+            "upstack": upstack,
+            "would_push": ([target] + upstack) if not no_push else [],
+            "predicted_conflicts": predicted,
+        }
+        if output_json:
+            out.print_json(_json.dumps(dry_result))
+        else:
+            err.print(f"would amend {target!r} (mode={mode})")
+            for b in upstack:
+                err.print(f"  would restack {b}")
+        return
+
+    # ── Pre-edit hook ─────────────────────────────────────────────────────────
+    _shared.run_lifecycle_hook(
+        root,
+        data,
+        "pre-edit",
+        branch=target,
+        extra={"mode": mode, "old_sha": old_sha},
+        skip=skip_hooks,
+        output_json=output_json,
+        quiet=quiet,
+    )
+
+    # ── Checkout target branch and amend ──────────────────────────────────────
+    current = git.current_branch()
+    if current != target:
+        git.checkout(target)
+
+    if not quiet and not output_json:
+        err.print(f"→ amending {target!r}...", end=" ")
+    new_sha = _do_amend(target, message, mode, quiet)
+    if not quiet and not output_json:
+        err.print("✓", style="green")
+
+    summary = _get_amendment_summary(old_sha, new_sha)
+
+    # Build original_shas for --abort recovery
+    original_shas: dict[str, str] = {target: old_sha}
+    for b in upstack:
+        original_shas[b] = git.get_sha(b)
+
+    # ── Restack upstack ───────────────────────────────────────────────────────
+    restacked, conflict_branch, conflict_sha = _restack_upstack(
+        upstack, original_shas, data, root, quiet=quiet, output_json=output_json
+    )
+
+    # ── Handle conflict ───────────────────────────────────────────────────────
+    if conflict_branch is not None:
+        remaining = upstack[upstack.index(conflict_branch) + 1 :]
+        edit_state: _EditState = {
+            "branch": target,
+            "mode": mode,
+            "original_sha": old_sha,
+            "amended_sha": new_sha,
+            "to_restack": upstack,
+            "restacked": restacked,
+            "original_shas": original_shas,
+            "started_at": datetime.now(UTC).isoformat(),
+        }
+        _save_edit_state(root, edit_state)
+        paused: EditPausedResult = {
+            "ok": False,
+            "state": "paused",
+            "mode": mode,
+            "branch": target,
+            "old_sha": old_sha,
+            "new_sha": new_sha,
+            "amendment_summary": summary,
+            "restacked": restacked,
+            "conflict_branch": conflict_branch,
+            "conflict_sha": conflict_sha,
+            "conflicted_files": git.conflicted_files(),
+            "remaining": remaining,
+            "exit_code": 3,
+            "hint": "resolve conflicts then run `arc edit --continue`",
+        }
+        if output_json:
+            out.print_json(_json.dumps(paused))
+        else:
+            err.print(f"conflict in {conflict_branch!r}", style="red")
+            for f in paused["conflicted_files"]:
+                err.print(f"  {f}", style="dim")
+            err.print("hint: resolve conflicts then run arc edit --continue", style="dim")
+        sys.exit(3)
+
+    # ── Success ───────────────────────────────────────────────────────────────
+    pushed: list[str] = []
+    if not no_push:
+        to_push = [target] + restacked
+        if not quiet and not output_json:
+            err.print(f"→ force-pushing {len(to_push)} branches...", end=" ")
+        git.force_push(to_push)
+        pushed = to_push
+        if not quiet and not output_json:
+            err.print("✓", style="green")
+
+    _shared.run_lifecycle_hook(
+        root,
+        data,
+        "post-edit",
+        branch=target,
+        extra={"mode": mode, "old_sha": old_sha, "new_sha": new_sha},
+        skip=skip_hooks,
+        output_json=output_json,
+        quiet=quiet,
+    )
+
+    done: EditDoneResult = {
+        "ok": True,
+        "state": "done",
+        "mode": mode,
+        "branch": target,
+        "old_sha": old_sha,
+        "new_sha": new_sha,
+        "amendment_summary": summary,
+        "restacked": restacked,
+        "pushed": pushed,
+    }
+    if output_json:
+        out.print_json(_json.dumps(done))
+    elif not quiet:
+        _shared._maybe_print_periodic_hint(root)
 
 
 def _do_abort(root, state, *, output_json, quiet):
