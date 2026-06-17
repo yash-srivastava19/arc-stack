@@ -168,3 +168,68 @@ def test_is_squash_merged_false_when_unique_commits(git_repo):
     from arc.git import is_squash_merged
 
     assert is_squash_merged(git_repo, "feat/a", "main") is False
+
+
+import subprocess as sp
+
+
+def test_get_staged_files_empty(git_repo):
+    from arc import git
+    import os; orig = os.getcwd(); os.chdir(git_repo)
+    assert git.get_staged_files() == []
+    os.chdir(orig)
+
+
+def test_get_staged_files_with_staged(git_repo):
+    from arc import git
+    import os; orig = os.getcwd(); os.chdir(git_repo)
+    (git_repo / "new.py").write_text("x = 1")
+    sp.run(["git", "add", "new.py"], cwd=git_repo, check=True, capture_output=True)
+    assert "new.py" in git.get_staged_files()
+    os.chdir(orig)
+
+
+def test_amend_staged_no_edit(git_repo):
+    from arc import git
+    import os; orig = os.getcwd(); os.chdir(git_repo)
+    old_sha = git.get_sha("HEAD")
+    (git_repo / "new.py").write_text("x = 1")
+    sp.run(["git", "add", "new.py"], cwd=git_repo, check=True, capture_output=True)
+    git.amend_staged()
+    new_sha = git.get_sha("HEAD")
+    assert new_sha != old_sha
+    os.chdir(orig)
+
+
+def test_diff_stat_returns_correct_counts(git_repo):
+    from arc import git
+    import os; orig = os.getcwd(); os.chdir(git_repo)
+    old_sha = git.get_sha("HEAD")
+    (git_repo / "a.py").write_text("line1\nline2\n")
+    sp.run(["git", "add", "a.py"], cwd=git_repo, check=True, capture_output=True)
+    sp.run(["git", "commit", "-m", "add a"], cwd=git_repo, check=True, capture_output=True)
+    new_sha = git.get_sha("HEAD")
+    stat = git.diff_stat(old_sha, new_sha)
+    assert "a.py" in stat["files_changed"]
+    assert stat["insertions"] == 2
+    assert stat["deletions"] == 0
+    os.chdir(orig)
+
+
+def test_is_mid_rebase_false_when_clean(git_repo):
+    from arc import git
+    assert git.is_mid_rebase(git_repo) is False
+
+
+def test_reset_branch_to_other_branch(git_repo):
+    from arc import git
+    import os; orig = os.getcwd(); os.chdir(git_repo)
+    old_sha = git.get_sha("HEAD")
+    (git_repo / "b.py").write_text("y = 2")
+    sp.run(["git", "add", "b.py"], cwd=git_repo, check=True, capture_output=True)
+    sp.run(["git", "commit", "-m", "add b"], cwd=git_repo, check=True, capture_output=True)
+    sp.run(["git", "checkout", "-b", "tmp-branch"], cwd=git_repo, check=True, capture_output=True)
+    git.reset_branch_to("main", old_sha)
+    sp.run(["git", "checkout", "main"], cwd=git_repo, check=True, capture_output=True)
+    assert git.get_sha("HEAD") == old_sha
+    os.chdir(orig)

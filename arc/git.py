@@ -123,6 +123,50 @@ def amend_message(new_message: str) -> None:
     _run(["git", "commit", "--amend", "-m", new_message])
 
 
+def get_staged_files() -> list[str]:
+    """Return files currently in the git index (staged for commit)."""
+    result = _run(["git", "diff", "--cached", "--name-only"], check=False)
+    return [f for f in result.stdout.splitlines() if f]
+
+
+def amend_staged() -> None:
+    """Amend HEAD commit with currently staged changes, keeping the existing message."""
+    _run(["git", "commit", "--amend", "--no-edit"])
+
+
+def diff_stat(old_ref: str, new_ref: str) -> dict[str, object]:
+    """Return diff stats between two commits: files_changed list, insertions, deletions."""
+    files_result = _run(["git", "diff", "--name-only", old_ref, new_ref], check=False)
+    files = [f for f in files_result.stdout.splitlines() if f]
+
+    stat_result = _run(["git", "diff", "--shortstat", old_ref, new_ref], check=False)
+    insertions, deletions = 0, 0
+    for part in stat_result.stdout.split(","):
+        part = part.strip()
+        if "insertion" in part:
+            insertions = int(part.split()[0])
+        elif "deletion" in part:
+            deletions = int(part.split()[0])
+
+    return {"files_changed": files, "insertions": insertions, "deletions": deletions}
+
+
+def is_mid_rebase(root: Path | None = None) -> bool:
+    """Return True if git is currently in the middle of a rebase operation."""
+    if root is None:
+        root = find_repo_root()
+    git_dir = root / ".git"
+    return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
+
+
+def reset_branch_to(branch: str, sha: str) -> None:
+    """Move a branch pointer to sha. Uses reset --hard if branch is currently checked out."""
+    if current_branch() == branch:
+        _run(["git", "reset", "--hard", sha])
+    else:
+        _run(["git", "branch", "-f", branch, sha])
+
+
 def set_config(key: str, value: str, global_: bool = False) -> None:
     args = ["git", "config"]
     if global_:
