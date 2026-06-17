@@ -90,7 +90,7 @@ def _edit_state_path(root: Path) -> Path:
 
 def _save_edit_state(root: Path, state: _EditState) -> None:
     path = _edit_state_path(root)
-    path.parent.mkdir(exist_ok=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_json.dumps(state, indent=2))
 
 
@@ -98,7 +98,13 @@ def _load_edit_state(root: Path) -> _EditState | None:
     path = _edit_state_path(root)
     if not path.exists():
         return None
-    return _json.loads(path.read_text())
+    try:
+        return _json.loads(path.read_text())
+    except _json.JSONDecodeError as exc:
+        raise RuntimeError(
+            f"Corrupt edit state file at {path}. "
+            "Run `arc edit --abort` or delete the file manually to recover."
+        ) from exc
 
 
 def _clear_edit_state(root: Path) -> None:
@@ -116,7 +122,9 @@ def _detect_mode(
     message: str | None,
     interactive: bool,
 ) -> Literal["message", "staged", "interactive"]:
-    """Determine amendment mode from flags and current git index state."""
+    # `message` is not read here: staged content always takes priority over
+    # a message-only intent. "message" mode is a guarantee that no file content
+    # changed; having staged files overrides that guarantee regardless of --message.
     if interactive:
         return "interactive"
     if git.get_staged_files():
