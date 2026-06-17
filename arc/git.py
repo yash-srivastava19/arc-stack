@@ -134,7 +134,7 @@ def amend_staged() -> None:
     _run(["git", "commit", "--amend", "--no-edit"])
 
 
-def diff_stat(old_ref: str, new_ref: str) -> dict[str, object]:
+def diff_stat(old_ref: str, new_ref: str) -> dict[str, list[str] | int]:
     """Return diff stats between two commits: files_changed list, insertions, deletions."""
     files_result = _run(["git", "diff", "--name-only", old_ref, new_ref], check=False)
     files = [f for f in files_result.stdout.splitlines() if f]
@@ -155,7 +155,13 @@ def is_mid_rebase(root: Path | None = None) -> bool:
     """Return True if git is currently in the middle of a rebase operation."""
     if root is None:
         root = find_repo_root()
-    git_dir = root / ".git"
+    git_path = root / ".git"
+    if git_path.is_file():
+        # worktree: .git is a file like "gitdir: /path/to/.git/worktrees/name"
+        line = git_path.read_text().strip()
+        git_dir = Path(line.split("gitdir:", 1)[1].strip())
+    else:
+        git_dir = git_path
     return (git_dir / "rebase-merge").exists() or (git_dir / "rebase-apply").exists()
 
 
