@@ -1493,6 +1493,9 @@ def test_verbose_flag_prints_git_commands(arc_root, monkeypatch):
 
     monkeypatch.chdir(arc_root)
     monkeypatch.setattr(_git, "current_branch", lambda: "main")
+    # Ensure _VERBOSE is restored after this test (the CLI sets it as a module
+    # side-effect, which would otherwise leak into subsequent tests).
+    monkeypatch.setattr(_git, "_VERBOSE", False)
     _save(
         arc_root,
         {
