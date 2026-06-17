@@ -1,12 +1,15 @@
 """Commit amendment with automatic upstack restack: arc edit."""
+
 from __future__ import annotations
 
 import json as _json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, TypedDict
 
+from arc import git
+
 # ── Public TypedDicts (JSON API shapes) ──────────────────────────────────────
+
 
 class AmendmentSummary(TypedDict):
     files_changed: list[str]
@@ -70,15 +73,16 @@ class EditAbortedResult(TypedDict):
 
 # ── In-progress state (internal, not exported) ───────────────────────────────
 
+
 class _EditState(TypedDict):
     branch: str
     mode: Literal["message", "staged", "interactive"]
-    original_sha: str    # branch tip before amendment
-    amended_sha: str     # branch tip after amendment
+    original_sha: str  # branch tip before amendment
+    amended_sha: str  # branch tip after amendment
     to_restack: list[str]
     restacked: list[str]
     original_shas: dict[str, str]  # every branch -> sha before any change (for --abort)
-    started_at: str      # ISO 8601
+    started_at: str  # ISO 8601
 
 
 _EDIT_STATE_FILENAME = "edit-in-progress.json"
@@ -115,8 +119,6 @@ def _clear_edit_state(root: Path) -> None:
 
 # ── Pure helper functions ─────────────────────────────────────────────────────
 
-from arc import git
-
 
 def _detect_mode(
     message: str | None,
@@ -136,7 +138,7 @@ def _get_amendment_summary(old_sha: str, new_sha: str) -> AmendmentSummary:
     """Return diff stats between old and new commit SHAs."""
     stat = git.diff_stat(old_sha, new_sha)
     return AmendmentSummary(
-        files_changed=stat["files_changed"],   # type: ignore[arg-type]
-        insertions=stat["insertions"],          # type: ignore[arg-type]
-        deletions=stat["deletions"],            # type: ignore[arg-type]
+        files_changed=stat["files_changed"],  # type: ignore[arg-type]
+        insertions=stat["insertions"],  # type: ignore[arg-type]
+        deletions=stat["deletions"],  # type: ignore[arg-type]
     )
