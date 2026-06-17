@@ -3,10 +3,15 @@
 from __future__ import annotations
 
 import json as _json
+import sys
 from pathlib import Path
 from typing import Literal, TypedDict
 
+import click
+
 from arc import git
+from arc.commands import _shared
+from arc.commands._shared import err
 
 # ── Public TypedDicts (JSON API shapes) ──────────────────────────────────────
 
@@ -146,11 +151,6 @@ def _get_amendment_summary(old_sha: str, new_sha: str) -> AmendmentSummary:
 
 # ── Command ───────────────────────────────────────────────────────────────────
 
-import sys
-import click
-from arc.commands import _shared
-from arc.commands._shared import err, out
-
 
 @click.command("edit")
 @click.argument("branch", required=False, default=None)
@@ -163,7 +163,18 @@ from arc.commands._shared import err, out
 @click.option("--skip-hooks", is_flag=True, help="Skip pre-edit / post-edit hooks.")
 @click.option("--json", "output_json", is_flag=True, help="Structured output.")
 @click.option("-q", "--quiet", is_flag=True)
-def edit_cmd(branch, message, interactive, no_push, dry_run, do_continue, do_abort, skip_hooks, output_json, quiet):
+def edit_cmd(
+    branch,
+    message,
+    interactive,
+    no_push,
+    dry_run,
+    do_continue,
+    do_abort,
+    skip_hooks,
+    output_json,
+    quiet,
+):
     """Amend a branch's HEAD commit and restack all upstack branches."""
     if not output_json and not _shared._is_tty():
         output_json = True
@@ -176,8 +187,10 @@ def edit_cmd(branch, message, interactive, no_push, dry_run, do_continue, do_abo
         edit_state = _load_edit_state(root)
         if edit_state is None:
             _shared._exit_json_error(
-                "no edit in progress", exit_code=1,
-                hint="nothing to abort", output_json=output_json,
+                "no edit in progress",
+                exit_code=1,
+                hint="nothing to abort",
+                output_json=output_json,
             )
         _do_abort(root, edit_state, output_json=output_json, quiet=quiet)
         return
@@ -187,8 +200,10 @@ def edit_cmd(branch, message, interactive, no_push, dry_run, do_continue, do_abo
         edit_state = _load_edit_state(root)
         if edit_state is None:
             _shared._exit_json_error(
-                "no edit in progress", exit_code=1,
-                hint="run arc edit to start an edit", output_json=output_json,
+                "no edit in progress",
+                exit_code=1,
+                hint="run arc edit to start an edit",
+                output_json=output_json,
             )
         _do_continue(root, data, edit_state, no_push=no_push, output_json=output_json, quiet=quiet)
         return
@@ -224,7 +239,7 @@ def edit_cmd(branch, message, interactive, no_push, dry_run, do_continue, do_abo
         _shared._exit_json_error(
             "nothing to amend — no staged changes and no --message",
             exit_code=1,
-            hint="stage changes with git add, or pass --message \"...\"",
+            hint='stage changes with git add, or pass --message "..."',
             output_json=output_json,
         )
 
