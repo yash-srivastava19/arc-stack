@@ -1,5 +1,8 @@
 """Tests for arc edit command."""
 
+import json
+import os as _os
+
 import pytest
 
 
@@ -101,13 +104,12 @@ def test_get_amendment_summary_shape(git_repo):
     assert isinstance(summary["deletions"], int)
 
 
-import os as _os
-
-
 def _run_edit(args, cwd=None):
     """Invoke edit_cmd via CliRunner, changing cwd if specified."""
-    from arc.commands.edit import edit_cmd
     from click.testing import CliRunner
+
+    from arc.commands.edit import edit_cmd
+
     runner = CliRunner()
     orig = _os.getcwd()
     if cwd:
@@ -122,6 +124,7 @@ def _run_edit(args, cwd=None):
 @pytest.mark.git
 def test_edit_fails_with_nothing_to_amend(arc_stack):
     from unittest.mock import patch
+
     with patch("arc.commands.edit.git.get_staged_files", return_value=[]):
         with patch("arc.commands.edit.git.find_repo_root", return_value=arc_stack):
             with patch("arc.commands.edit.git.is_mid_rebase", return_value=False):
@@ -136,6 +139,7 @@ def test_edit_fails_with_nothing_to_amend(arc_stack):
 @pytest.mark.git
 def test_edit_fails_when_interactive_and_message(arc_stack):
     from unittest.mock import patch
+
     with patch("arc.commands.edit.git.find_repo_root", return_value=arc_stack):
         with patch("arc.commands.edit.git.is_mid_rebase", return_value=False):
             result = _run_edit(["--interactive", "--message", "fix", "--json"])
@@ -147,6 +151,7 @@ def test_edit_fails_when_interactive_and_message(arc_stack):
 @pytest.mark.git
 def test_edit_fails_when_mid_rebase(arc_stack):
     from unittest.mock import patch
+
     with patch("arc.commands.edit.git.find_repo_root", return_value=arc_stack):
         with patch("arc.commands.edit.git.is_mid_rebase", return_value=True):
             result = _run_edit(["--message", "fix", "--json"])
@@ -158,6 +163,7 @@ def test_edit_fails_when_mid_rebase(arc_stack):
 @pytest.mark.git
 def test_edit_continue_fails_when_no_state(arc_stack):
     from unittest.mock import patch
+
     with patch("arc.commands.edit.git.find_repo_root", return_value=arc_stack):
         result = _run_edit(["--continue", "--json"])
     assert result.exit_code == 1, result.output
