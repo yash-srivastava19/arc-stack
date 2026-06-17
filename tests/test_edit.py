@@ -242,3 +242,59 @@ def test_edit_staged_content_no_upstack(arc_stack):
     assert data_out["mode"] == "staged"
     assert "solo.py" in data_out["amendment_summary"]["files_changed"]
     assert data_out["amendment_summary"]["insertions"] == 1
+
+
+@pytest.mark.git
+def test_edit_restacks_upstack_branches(stacked_repo):
+    """arc edit on feat/auth restacks feat/api and feat/tests."""
+    import subprocess as sp
+
+    root = stacked_repo
+
+    old_auth_sha = sp.run(
+        ["git", "rev-parse", "feat/auth"], cwd=root, capture_output=True, text=True
+    ).stdout.strip()
+    old_api_sha = sp.run(
+        ["git", "rev-parse", "feat/api"], cwd=root, capture_output=True, text=True
+    ).stdout.strip()
+
+    orig = _os.getcwd()
+    _os.chdir(root)
+    result = _run_edit(["feat/auth", "--message", "amended auth", "--no-push", "--json"])
+    _os.chdir(orig)
+
+    assert result.exit_code == 0, result.output
+    data_out = json.loads(result.output)
+    assert data_out["state"] == "done"
+    assert data_out["old_sha"] == old_auth_sha
+    assert data_out["restacked"] == ["feat/api", "feat/tests"]
+
+    # feat/api must have a new SHA (was rebased onto new feat/auth)
+    new_api_sha = sp.run(
+        ["git", "rev-parse", "feat/api"], cwd=root, capture_output=True, text=True
+    ).stdout.strip()
+    assert new_api_sha != old_api_sha
+
+
+@pytest.mark.git
+def test_edit_dry_run_shows_upstack(stacked_repo):
+    import subprocess as sp
+
+    root = stacked_repo
+
+    # Stage something so mode=staged is detected
+    sp.run(["git", "checkout", "feat/auth"], cwd=root, check=True, capture_output=True)
+    (root / "auth.py").write_text("def auth(): return True\n")
+    sp.run(["git", "add", "auth.py"], cwd=root, check=True, capture_output=True)
+
+    orig = _os.getcwd()
+    _os.chdir(root)
+    result = _run_edit(["feat/auth", "--dry-run", "--json"])
+    _os.chdir(orig)
+
+    assert result.exit_code == 0, result.output
+    data_out = json.loads(result.output)
+    assert data_out["state"] == "dry_run"
+    assert "feat/api" in data_out["upstack"]
+    assert "feat/tests" in data_out["upstack"]
+    assert isinstance(data_out["predicted_conflicts"], list)
