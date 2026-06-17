@@ -35,28 +35,28 @@ def test_load_edit_state_returns_none_when_absent(tmp_path):
     assert _load_edit_state(tmp_path) is None
 
 
-def test_detect_mode_message_when_flag_and_clean_index(tmp_path):
+def test_detect_mode_message_when_flag_and_clean_index():
     from arc.commands.edit import _detect_mode
     from unittest.mock import patch
     with patch("arc.commands.edit.git.get_staged_files", return_value=[]):
         assert _detect_mode(message="fix typo", interactive=False) == "message"
 
 
-def test_detect_mode_staged_when_files_staged(tmp_path):
+def test_detect_mode_staged_when_files_staged():
     from arc.commands.edit import _detect_mode
     from unittest.mock import patch
     with patch("arc.commands.edit.git.get_staged_files", return_value=["auth.py"]):
         assert _detect_mode(message=None, interactive=False) == "staged"
 
 
-def test_detect_mode_staged_overrides_message_when_files_staged(tmp_path):
+def test_detect_mode_staged_overrides_message_when_files_staged():
     from arc.commands.edit import _detect_mode
     from unittest.mock import patch
     with patch("arc.commands.edit.git.get_staged_files", return_value=["auth.py"]):
         assert _detect_mode(message="new message", interactive=False) == "staged"
 
 
-def test_detect_mode_interactive(tmp_path):
+def test_detect_mode_interactive():
     from arc.commands.edit import _detect_mode
     from unittest.mock import patch
     with patch("arc.commands.edit.git.get_staged_files", return_value=[]):
@@ -73,9 +73,12 @@ def test_get_amendment_summary_shape(git_repo):
     sp.run(["git", "add", "x.py"], cwd=git_repo, check=True, capture_output=True)
     sp.run(["git", "commit", "-m", "add x"], cwd=git_repo, check=True, capture_output=True)
     new_sha = sp.run(["git", "rev-parse", "HEAD"], cwd=git_repo, capture_output=True, text=True).stdout.strip()
-    orig = os.getcwd(); os.chdir(git_repo)
-    summary = _get_amendment_summary(old_sha, new_sha)
-    os.chdir(orig)
+    orig = os.getcwd()
+    try:
+        os.chdir(git_repo)
+        summary = _get_amendment_summary(old_sha, new_sha)
+    finally:
+        os.chdir(orig)
     assert "x.py" in summary["files_changed"]
     assert summary["insertions"] == 2
     assert isinstance(summary["deletions"], int)
