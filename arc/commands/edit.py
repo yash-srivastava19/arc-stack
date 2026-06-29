@@ -138,7 +138,7 @@ def _get_amendment_summary(old_sha: str, new_sha: str) -> AmendmentSummary:
     """Return diff stats between old and new commit SHAs."""
     stat = git.diff_stat(old_sha, new_sha)
     return AmendmentSummary(
-        files_changed=stat["files_changed"],  # type: ignore[arg-type]
-        insertions=stat["insertions"],  # type: ignore[arg-type]
-        deletions=stat["deletions"],  # type: ignore[arg-type]
+        files_changed=stat["files_changed"],
+        insertions=stat["insertions"],
+        deletions=stat["deletions"],
     )
