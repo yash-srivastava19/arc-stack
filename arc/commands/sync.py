@@ -284,7 +284,7 @@ def restack_cmd(branch: str | None, dry_run: bool, quiet: bool) -> None:
             err.print(f"Would rebase {target} onto {parent}.")
         return
     git.checkout(target)
-    result = git.rebase(parent)
+    result = git.rebase_fork_point(parent)
     if result.returncode != 0:
         err.print(f"Rebase of {target} onto {parent} failed.")
         err.print("hint: resolve conflicts then run arc rebase --continue", style="dim")
@@ -340,7 +340,7 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
             if not quiet:
                 err.print(f"Rebasing {branch} onto {onto}...")
             git.checkout(branch)
-            result = git.rebase(onto)
+            result = git.rebase_fork_point(onto)
             if result.returncode != 0:
                 git.rebase_abort()
                 files = git.conflicted_files()

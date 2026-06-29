@@ -146,6 +146,14 @@ def status_cmd(output_json, plain, quiet):
         output_json = True
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root, output_json=output_json)
+
+    edit_state_path = root / ".arc" / "edit-in-progress.json"
+    if edit_state_path.exists() and not quiet:
+        err.print(
+            "⚠  arc edit is paused. Run 'arc edit --continue' to resume or 'arc edit --abort' to cancel.",
+            style="yellow",
+        )
+
     current = git.current_branch()
     names = st.branch_names(data)
 
