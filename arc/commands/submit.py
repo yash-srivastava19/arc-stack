@@ -262,6 +262,18 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
         data = st.remove_branch(data, target)
         st.save(root, data)
 
+        # Auto-promote the new bottom-of-stack PR from draft → ready.
+        # Disable with: { "auto_promote_on_land": false } in .arc/config.json
+        cfg = st.load_config(root)
+        if above and cfg.get("auto_promote_on_land", True):
+            new_bottom = above[0]
+            new_bottom_entry = st.get_branch(data, new_bottom)
+            promote_pr = new_bottom_entry.get("pr_number") if new_bottom_entry else None
+            if promote_pr:
+                if not quiet:
+                    err.print(f"→ promoting PR #{promote_pr} ({new_bottom}) to ready...")
+                github.mark_pr_ready(promote_pr)
+
         _shared.run_lifecycle_hook(
             root,
             data,

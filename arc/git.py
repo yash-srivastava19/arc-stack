@@ -98,6 +98,18 @@ def rebase_onto(new_base: str, old_base: str, branch: str) -> subprocess.Complet
     return _run(["git", "rebase", "--onto", new_base, old_base, branch], check=False)
 
 
+def rebase_fork_point(onto: str) -> subprocess.CompletedProcess:
+    """Rebase using --fork-point so amended parent commits don't replay into children.
+
+    When a parent branch is amended externally (git commit --amend), plain
+    `git rebase <parent>` replays the old amended content as new commits → conflict.
+    --fork-point finds the last commit that was in <onto>'s reflog and is also
+    an ancestor of HEAD, then rebases from that point — skipping the old content.
+    Falls back to merge-base if no fork point is found (git handles this internally).
+    """
+    return _run(["git", "rebase", "--fork-point", onto], check=False)
+
+
 def refresh_index() -> None:
     """Clear phantom mtime differences so rebase/status aren't confused by unchanged files."""
     _run(["git", "update-index", "--refresh"], check=False)

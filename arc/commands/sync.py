@@ -129,7 +129,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
             if not quiet:
                 err.print(f"Rebasing {branch} onto {onto}...")
             git.checkout(branch)
-            result = git.rebase(onto)
+            result = git.rebase_fork_point(onto)
             if result.returncode != 0:
                 if not git.is_mid_rebase(root):
                     # Rebase never started — pre-condition failure (unstaged changes,

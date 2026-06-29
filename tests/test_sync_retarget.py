@@ -191,7 +191,7 @@ def test_sync_prunes_merged_branch_from_stack(arc_root, monkeypatch):
     monkeypatch.setattr(_git, "fetch", lambda remote="origin": None)
     monkeypatch.setattr(_git, "current_branch", lambda: "feat/next")
     monkeypatch.setattr(_git, "is_ancestor", lambda a, b: True)
-    monkeypatch.setattr(_git, "rebase", lambda onto: type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(_git, "rebase_fork_point", lambda onto: type("R", (), {"returncode": 0})())
     monkeypatch.setattr(_git, "checkout", lambda b: None)
     monkeypatch.setattr(_git, "is_squash_merged", lambda root, branch, base: False)
     monkeypatch.setattr(_git, "branch_exists", lambda b: True)
