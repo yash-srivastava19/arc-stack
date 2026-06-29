@@ -24,12 +24,14 @@ State is stored in `.arc/state.json` (gitignored). Configuration lives in `.arc/
 1. **Always run `arc setup` before using arc in a new environment.** It checks that `git` and `gh` are installed and authenticated. Exit code 6 means the environment is not ready.
 2. **Run `arc init` once per repo before any other commands.** Without initialization, every command exits with code 2.
 3. **Never run commands that prompt for confirmation without `--force` or `--dry-run`.** `arc land` and `arc drop` prompt interactively when stdin is a tty. In non-interactive contexts, pass `--force` or `--dry-run`.
-4. **Use `--json` for machine-readable output.** `status`, `sync`, `push`, `submit`, `land`, and `drop` all support `--json`.
-5. **Use `--dry-run` before destructive operations.** Rebase, land, drop, sync, and push all support `-n`/`--dry-run`.
-6. **Handle exit code 3 (conflict) explicitly.** After a conflict, resolve it with `arc rebase --continue` or abandon with `arc rebase --abort`.
+4. **Use `--json` for machine-readable output.** `status`, `sync`, `push`, `submit`, `land`, `drop`, and `edit` all support `--json`.
+5. **Use `--dry-run` before destructive operations.** Rebase, land, drop, sync, push, and edit all support `-n`/`--dry-run`.
+6. **Handle exit code 3 (conflict) explicitly.** After a conflict during `arc sync` or `arc rebase`, use `arc rebase --continue`/`--abort`. After a conflict during `arc edit`, use `arc edit --continue`/`--abort`.
 7. **`arc submit` creates PRs as draft by default.** Pass `--open` to mark them ready for review.
 8. **Branch order is the stack order.** Index 1 is the branch closest to trunk; the highest index is the tip.
 9. **Run `arc doctor` to diagnose environment issues.** It checks git, gh, authentication, and stack validity in one command.
+10. **`arc edit` saves conflict state to `.arc/edit-in-progress.json`.** If a rebase conflict pauses an edit, the state is persisted — always `arc edit --continue` or `arc edit --abort` before starting a new edit.
+11. **`arc push` skips branches already merged into the base.** It checks locally (git cherry) and via GitHub PR state — you will never accidentally resurrect a merged branch's remote.
 
 ---
 
@@ -56,6 +58,9 @@ State is stored in `.arc/state.json` (gitignored). Configuration lives in `.arc/
 | `arc bottom` | Jump to the bottommost branch. |
 | `arc restack [BRANCH] [-n] [-q]` | Restack a single branch onto its stack parent without full sync. |
 | `arc stack analyze [--json]` | Show critical path, safe-to-land branches, and blockers. |
+| `arc edit [BRANCH] [--message TEXT] [--no-push] [-n] [--json] [-q]` | Amend HEAD commit of a branch and auto-restack all upstack branches. |
+| `arc edit --continue` | Resume a paused edit after resolving a rebase conflict. |
+| `arc edit --abort` | Abort a paused edit and restore all branches to their pre-edit SHAs. |
 | `arc doctor` | Check environment: git, gh, auth, stack validity. |
 | `arc report --bug [--message TEXT]` | Report a bug (opens editor in TTY, requires `--message` in non-TTY) |
 | `arc report --feedback [--message TEXT]` | Share feedback or feature request |
@@ -69,7 +74,7 @@ State is stored in `.arc/state.json` (gitignored). Configuration lives in `.arc/
 | 0 | Success | — |
 | 1 | Logical error (no PR, stack empty, branch not found) | Read the error message; check `arc status`. |
 | 2 | Stack not initialized | Run `arc init`. |
-| 3 | Rebase conflict | Resolve conflicts, then `arc rebase --continue`; or `arc rebase --abort`. |
+| 3 | Rebase/edit conflict | For `arc sync`/`arc rebase`: resolve then `arc rebase --continue` or `--abort`. For `arc edit`: resolve then `arc edit --continue` or `arc edit --abort`. |
 | 5 | Branch not in stack | Verify branch name with `arc status --plain`. |
 | 6 | Environment not ready (git or gh missing / not authenticated) | Run `arc setup` and fix the reported issue. |
 | 7 | Hook gate failed (`pre-*` hook exited non-zero) | Fix the hook failure or pass `--skip-hooks` to bypass. |
@@ -159,6 +164,69 @@ Field notes:
 
 ---
 
+## `arc edit --json` schema
+
+**Success (all branches restacked):**
+```json
+{
+  "ok": true,
+  "state": "done",
+  "target": "feat/auth",
+  "old_sha": "abc1234",
+  "new_sha": "def5678",
+  "restacked": ["feat/api", "feat/ui"],
+  "pushed": ["feat/auth", "feat/api", "feat/ui"],
+  "amendment": {
+    "files_changed": ["src/auth.py"],
+    "insertions": 12,
+    "deletions": 3
+  }
+}
+```
+
+**Paused (rebase conflict mid-restack):**
+```json
+{
+  "ok": false,
+  "state": "paused",
+  "conflict_branch": "feat/api",
+  "conflict_sha": "abc9999",
+  "restacked": ["feat/auth"],
+  "remaining": ["feat/ui"],
+  "hint": "resolve conflicts, then run: arc edit --continue"
+}
+```
+
+**Aborted:**
+```json
+{
+  "ok": true,
+  "state": "aborted",
+  "restored": ["feat/auth", "feat/api", "feat/ui"]
+}
+```
+
+Field notes:
+- `pushed`: branches actually force-pushed (skips branches already merged into base).
+- `conflict_sha`: the SHA of the branch at the time the conflict occurred (useful for `git rebase --onto`).
+- `remaining`: branches that have not yet been restacked (will be attempted after `--continue`).
+
+---
+
+## Configuration (`.arc/config.json`)
+
+```json
+{
+  "auto_promote_on_land": true
+}
+```
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `auto_promote_on_land` | `true` | After `arc land`, automatically mark the new bottom-of-stack PR as ready for review. Set to `false` to keep the next PR in draft. |
+
+---
+
 ## Common agent workflows
 
 ### Bootstrap a new stack
@@ -195,12 +263,13 @@ arc sync --dry-run     # shows what would be rebased; exits 0 even if conflicts 
 arc rebase --dry-run   # same for local rebase without fetch
 ```
 
-### Land a merged PR
+### Land a merged PR (standard flow — no arc edit involved)
 
 ```bash
 # Verify PR is merged first
 arc status --json | python3 -c "import sys,json; s=json.load(sys.stdin); print(s['branches'][0]['is_merged'])"
-arc land --force -q    # defaults to the bottommost branch
+arc land --force -q    # rebases above branches, retargets + reopens child PRs if GitHub
+                       # auto-closed them, auto-promotes new bottom-of-stack PR to ready
 arc push -q            # push restacked branches
 arc submit -q          # update PR descriptions
 ```
@@ -219,6 +288,42 @@ arc up 2               # move 2 positions toward tip
 arc checkout 3         # jump to index 3 directly
 arc top                # jump to highest index
 ```
+
+### Amend a commit in the middle of the stack
+
+```bash
+# Stage your changes onto the target branch first
+git checkout feat/auth
+git add src/auth.py
+
+# Then let arc handle the rest
+arc edit feat/auth --json    # amends HEAD, cascade-rebases all upstack branches, force-pushes
+
+# Or amend just the commit message (no staged files needed):
+arc edit feat/auth --message "fix: correct token expiry logic"
+```
+
+If `arc edit` exits with code 3 (conflict in a child branch):
+```bash
+# Resolve the conflict in the conflicted branch, then:
+git add <resolved-files>
+arc edit --continue          # resumes restacking remaining branches
+
+# Or abandon the entire edit (all branches restored to pre-edit SHAs):
+arc edit --abort
+```
+
+### Land a merged PR with auto-promotion
+
+```bash
+# PR #42 (feat/auth) was merged on GitHub
+arc land --force -q          # rebases feat/api (above), deletes feat/auth locally,
+                             # then automatically marks feat/api's PR as ready for review
+arc push -q                  # push the restacked branches
+arc submit -q                # update PR descriptions
+```
+
+To suppress auto-promote: set `{ "auto_promote_on_land": false }` in `.arc/config.json`.
 
 ### Recover from a rebase conflict
 
