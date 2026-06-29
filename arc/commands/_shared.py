@@ -14,6 +14,7 @@ import random
 import subprocess as _subprocess
 import sys
 import tempfile
+from typing import NoReturn
 
 from rich.console import Console
 
@@ -95,7 +96,7 @@ def _is_tty() -> bool:
 
 def _exit_json_error(
     message: str, exit_code: int, hint: str = "", output_json: bool = False
-) -> None:
+) -> NoReturn:
     if output_json:
         import json as _j
 
