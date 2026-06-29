@@ -2,6 +2,14 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import TypedDict
+
+
+class DiffStat(TypedDict):
+    files_changed: list[str]
+    insertions: int
+    deletions: int
+
 
 _VERBOSE = False  # module-level flag set by cli
 
@@ -134,7 +142,7 @@ def amend_staged() -> None:
     _run(["git", "commit", "--amend", "--no-edit"])
 
 
-def diff_stat(old_ref: str, new_ref: str) -> dict[str, list[str] | int]:
+def diff_stat(old_ref: str, new_ref: str) -> DiffStat:
     """Return diff stats between two commits: files_changed list, insertions, deletions."""
     files_result = _run(["git", "diff", "--name-only", old_ref, new_ref], check=False)
     files = [f for f in files_result.stdout.splitlines() if f]
