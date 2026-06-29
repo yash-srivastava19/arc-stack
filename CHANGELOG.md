@@ -3,7 +3,13 @@
 All notable changes to arc are documented here.
 
 ---
+## [0.6.1] — 2026-06-29
 
+### Fixed
+- V0.6.1 QoL — fork-point everywhere, submit retargets stale bases, edit-in-progress warnings (#62) ([8239611](https://github.com/yash-srivastava19/arc-stack/commit/8239611a8d8589a58453c90a049225d67ea6d615))
+
+
+---
 ## [0.5.1] — 2026-06-14
 
 ### Added
