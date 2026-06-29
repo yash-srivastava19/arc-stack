@@ -98,6 +98,11 @@ def rebase_onto(new_base: str, old_base: str, branch: str) -> subprocess.Complet
     return _run(["git", "rebase", "--onto", new_base, old_base, branch], check=False)
 
 
+def refresh_index() -> None:
+    """Clear phantom mtime differences so rebase/status aren't confused by unchanged files."""
+    _run(["git", "update-index", "--refresh"], check=False)
+
+
 def rebase_continue() -> subprocess.CompletedProcess:
     return _run(["git", "rebase", "--continue"], check=False)
 

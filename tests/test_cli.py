@@ -646,6 +646,134 @@ def test_land_dry_run(tmp_path):
     assert "[dry-run]" in result.output
 
 
+def _write_state_with_pr_above(tmp_path):
+    """Stack where both feat/auth AND feat/api have PRs — for retarget tests."""
+    return _write_state(
+        tmp_path,
+        prefix="feat",
+        branches=[
+            {"name": "feat/auth", "pr_number": 42, "revision": 1},
+            {"name": "feat/api", "pr_number": 43, "revision": 1},
+        ],
+    )
+
+
+def test_land_retargets_above_prs_to_parent(tmp_path):
+    """arc land retargets above-branch PRs to parent before deleting branch."""
+    _write_state_with_pr_above(tmp_path)
+    retarget_calls = []
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value="squash123"),
+        patch("arc.git.get_sha", return_value="old_sha"),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase_onto", return_value=MagicMock(returncode=0)),
+        patch("arc.git.delete_branch"),
+        patch("arc.git.is_ancestor", return_value=False),
+        patch("arc.github.get_pr_state", return_value="OPEN") as mock_state,
+        patch(
+            "arc.github.update_pr_base",
+            side_effect=lambda n, b: retarget_calls.append((n, b)) or True,
+        ),
+    ):
+        result = runner.invoke(cli, ["land", "feat/auth", "-f"])
+    assert result.exit_code == 0, result.output
+    # feat/api (PR #43) should be retargeted to "main" (the parent of feat/auth)
+    assert (43, "main") in retarget_calls
+    mock_state.assert_called_once_with(43)
+
+
+def test_land_reopens_and_retargets_auto_closed_prs(tmp_path):
+    """arc land reopens GitHub-auto-closed child PRs then retargets them."""
+    _write_state_with_pr_above(tmp_path)
+    reopen_calls = []
+    retarget_calls = []
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value="squash123"),
+        patch("arc.git.get_sha", return_value="old_sha"),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase_onto", return_value=MagicMock(returncode=0)),
+        patch("arc.git.delete_branch"),
+        patch("arc.git.is_ancestor", return_value=False),
+        # GitHub auto-closed PR #43 because its base branch was deleted
+        patch("arc.github.get_pr_state", return_value="CLOSED"),
+        patch("arc.github.reopen_pr", side_effect=lambda n: reopen_calls.append(n) or True),
+        patch(
+            "arc.github.update_pr_base",
+            side_effect=lambda n, b: retarget_calls.append((n, b)) or True,
+        ),
+    ):
+        result = runner.invoke(cli, ["land", "feat/auth", "-f"])
+    assert result.exit_code == 0, result.output
+    assert 43 in reopen_calls, "should reopen the auto-closed PR"
+    assert (43, "main") in retarget_calls, "should retarget to parent after reopen"
+
+
+def test_sync_refresh_index_called_before_rebase(tmp_path):
+    """arc sync calls git.refresh_index before rebasing to clear phantom mtime diffs."""
+    _write_state(
+        tmp_path,
+        branches=[{"name": "feat/a", "pr_number": None, "revision": 0}],
+    )
+    call_order = []
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/a"),
+        patch("arc.git.fetch", side_effect=lambda: call_order.append("fetch")),
+        patch("arc.git.refresh_index", side_effect=lambda: call_order.append("refresh")),
+        patch("arc.git.branch_exists", return_value=True),
+        patch("arc.git.is_squash_merged", return_value=False),
+        patch("arc.git.get_sha", return_value="abc"),
+        patch("arc.git.checkout"),
+        patch(
+            "arc.git.rebase",
+            side_effect=lambda _: call_order.append("rebase") or MagicMock(returncode=0),
+        ),
+    ):
+        result = runner.invoke(cli, ["sync"])
+    assert result.exit_code == 0, result.output
+    assert call_order.index("refresh") < call_order.index("rebase"), (
+        "refresh_index must run before rebase"
+    )
+
+
+def test_sync_pre_rebase_failure_shows_clear_error(tmp_path):
+    """arc sync shows 'Could not start rebase' (not 'Conflict') for pre-condition failures."""
+    _write_state(
+        tmp_path,
+        branches=[{"name": "feat/a", "pr_number": None, "revision": 0}],
+    )
+    failed_result = MagicMock(
+        returncode=128, stderr="error: cannot rebase: You have unstaged changes."
+    )
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/a"),
+        patch("arc.git.fetch"),
+        patch("arc.git.refresh_index"),
+        patch("arc.git.branch_exists", return_value=True),
+        patch("arc.git.is_squash_merged", return_value=False),
+        patch("arc.git.get_sha", return_value="abc"),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase", return_value=failed_result),
+        # Not mid-rebase: rebase never started
+        patch("arc.git.is_mid_rebase", return_value=False),
+    ):
+        result = runner.invoke(cli, ["sync"])
+    assert result.exit_code == 3
+    assert "conflict" not in result.output.lower(), (
+        "should not say 'conflict' for a pre-rebase failure"
+    )
+    assert "could not start rebase" in result.output.lower()
+
+
 # ---------------------------------------------------------------------------
 # Task 14: arc amend + arc drop
 # ---------------------------------------------------------------------------

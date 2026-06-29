@@ -205,6 +205,38 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
             output_json=output_json,
             quiet=quiet,
         )
+
+        # ── Retarget above PRs to parent BEFORE touching local branches ───────
+        # GitHub auto-closes PRs whose base branch is deleted at merge time.
+        # We must retarget (and reopen if needed) before we do anything local.
+        for ab in above:
+            ab_entry = st.get_branch(data, ab)
+            pr_num = ab_entry.get("pr_number") if ab_entry else None
+            if not pr_num:
+                continue
+            pr_state = github.get_pr_state(pr_num)
+            if pr_state == "MERGED":
+                continue  # already landed separately — skip
+            if pr_state == "CLOSED":
+                # Auto-closed when base branch was deleted; reopen first
+                if not quiet:
+                    err.print(f"→ reopening PR #{pr_num} ({ab}) (auto-closed by GitHub)...")
+                reopened = github.reopen_pr(pr_num)
+                if not reopened and not quiet:
+                    err.print(
+                        f"  warning: could not reopen PR #{pr_num} — retarget it manually",
+                        style="yellow",
+                    )
+            if pr_state != "MERGED":
+                if not quiet:
+                    err.print(f"→ retargeting PR #{pr_num} ({ab}) → {parent}...")
+                ok = github.update_pr_base(pr_num, parent)
+                if not ok and not quiet:
+                    err.print(
+                        f"  warning: could not retarget PR #{pr_num} — base may be wrong",
+                        style="yellow",
+                    )
+
         pre_shas = {n: git.get_sha(n) for n in above}
         for ab in above:
             git.checkout(ab)
