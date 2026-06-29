@@ -99,6 +99,20 @@ def pr_is_merged(number: int) -> bool:
     return json.loads(result.stdout).get("state") == "MERGED"
 
 
+def get_pr_state(number: int) -> str | None:
+    """Return PR state: 'OPEN', 'CLOSED', or 'MERGED'. None if not found."""
+    result = _run(["gh", "pr", "view", str(number), "--json", "state"], check=False)
+    if result.returncode != 0:
+        return None
+    return json.loads(result.stdout).get("state")
+
+
+def reopen_pr(number: int) -> bool:
+    """Reopen a closed PR. Returns True on success."""
+    result = _run(["gh", "pr", "reopen", str(number)], check=False)
+    return result.returncode == 0
+
+
 def get_merge_commit_sha(number: int) -> str | None:
     result = _run(["gh", "pr", "view", str(number), "--json", "mergeCommit"], check=False)
     if result.returncode != 0:

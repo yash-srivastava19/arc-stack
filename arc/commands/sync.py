@@ -79,6 +79,9 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
             err.print("Fetching...", end=" ")
         if not dry_run:
             git.fetch()
+            # Clear phantom mtime differences (e.g. uv.lock) that would cause
+            # git rebase to refuse with "unstaged changes" even when nothing changed.
+            git.refresh_index()
         if not quiet:
             err.print("done.")
 
@@ -128,6 +131,25 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
             git.checkout(branch)
             result = git.rebase(onto)
             if result.returncode != 0:
+                if not git.is_mid_rebase(root):
+                    # Rebase never started — pre-condition failure (unstaged changes,
+                    # locked index, etc.) not a real merge conflict.
+                    for name, sha in pre_shas.items():
+                        try:
+                            git.checkout(name)
+                            git._run(["git", "reset", "--hard", sha])
+                        except Exception:
+                            pass
+                    err.print(
+                        f"Could not start rebase of {branch}: {result.stderr.strip() or 'see git status'}",
+                        style="red",
+                    )
+                    err.print(
+                        "hint: run `git status` to inspect, then retry `arc sync`", style="dim"
+                    )
+                    _shared._maybe_print_error_hint(root)
+                    sys.exit(3)
+                # Real merge conflict — abort and roll back all rebases in this run
                 git.rebase_abort()
                 for name, sha in pre_shas.items():
                     try:
