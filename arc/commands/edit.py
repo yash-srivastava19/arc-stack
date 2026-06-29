@@ -386,8 +386,7 @@ def edit_cmd(
 
     # ── Handle conflict ───────────────────────────────────────────────────────
     if conflict_branch is not None:
-        remaining = upstack[upstack.index(conflict_branch) + 1 :]
-        new_edit_state: _EditState = {
+        paused_state: _EditState = {
             "branch": target,
             "mode": mode,
             "original_sha": old_sha,
@@ -397,31 +396,15 @@ def edit_cmd(
             "original_shas": original_shas,
             "started_at": datetime.now(UTC).isoformat(),
         }
-        _save_edit_state(root, new_edit_state)
-        paused: EditPausedResult = {
-            "ok": False,
-            "state": "paused",
-            "mode": mode,
-            "branch": target,
-            "old_sha": old_sha,
-            "new_sha": new_sha,
-            "amendment_summary": summary,
-            "restacked": restacked,
-            "conflict_branch": conflict_branch,
-            "conflict_sha": conflict_sha or "",
-            "conflicted_files": git.conflicted_files(),
-            "remaining": remaining,
-            "exit_code": 3,
-            "hint": "resolve conflicts then run `arc edit --continue`",
-        }
-        if output_json:
-            out.print_json(_json.dumps(paused))
-        else:
-            err.print(f"conflict in {conflict_branch!r}", style="red")
-            for f in paused["conflicted_files"]:
-                err.print(f"  {f}", style="dim")
-            err.print("hint: resolve conflicts then run arc edit --continue", style="dim")
-        sys.exit(3)
+        _handle_conflict(
+            root,
+            paused_state,
+            conflict_branch,
+            conflict_sha or "",
+            summary=summary,
+            output_json=output_json,
+            quiet=quiet,
+        )
 
     # ── Success ───────────────────────────────────────────────────────────────
     pushed: list[str] = []
@@ -462,11 +445,190 @@ def edit_cmd(
         _shared._maybe_print_periodic_hint(root)
 
 
-def _do_abort(root, state, *, output_json, quiet):
-    """Stub — implemented in PR5."""
-    _shared._exit_json_error("--abort not yet implemented", exit_code=1, output_json=output_json)
+def _handle_conflict(
+    root: Path,
+    state: _EditState,
+    conflict_branch: str,
+    conflict_sha: str,
+    *,
+    summary: AmendmentSummary,
+    output_json: bool,
+    quiet: bool,
+) -> None:
+    """Save state, emit a paused result, and exit with code 3. Never returns."""
+    _save_edit_state(root, state)
+    idx = len(state["restacked"])
+    remaining = state["to_restack"][idx + 1 :]
+    paused: EditPausedResult = {
+        "ok": False,
+        "state": "paused",
+        "mode": state["mode"],
+        "branch": state["branch"],
+        "old_sha": state["original_sha"],
+        "new_sha": state["amended_sha"],
+        "amendment_summary": summary,
+        "restacked": state["restacked"],
+        "conflict_branch": conflict_branch,
+        "conflict_sha": conflict_sha,
+        "conflicted_files": git.conflicted_files(),
+        "remaining": remaining,
+        "exit_code": 3,
+        "hint": "resolve conflicts then run `arc edit --continue`",
+    }
+    if output_json:
+        out.print_json(_json.dumps(paused))
+    else:
+        err.print(f"conflict in {conflict_branch!r}", style="red")
+        for f in paused["conflicted_files"]:
+            err.print(f"  {f}", style="dim")
+        err.print("hint: resolve conflicts then run arc edit --continue", style="dim")
+    sys.exit(3)
 
 
-def _do_continue(root, data, state, *, no_push, output_json, quiet):
-    """Stub — implemented in PR5."""
-    _shared._exit_json_error("--continue not yet implemented", exit_code=1, output_json=output_json)
+def _do_abort(root: Path, state: _EditState, *, output_json: bool, quiet: bool) -> None:
+    """Undo edit — abort any in-progress rebase and restore all branches to original SHAs."""
+    if git.is_mid_rebase(root):
+        if not quiet and not output_json:
+            err.print("→ aborting in-progress rebase...", end=" ")
+        git.rebase_abort()
+        if not quiet and not output_json:
+            err.print("✓", style="green")
+
+    original_shas = state["original_shas"]
+    restored: list[str] = []
+
+    # Restore upstack branches first (leaves → root), then the amended branch
+    upstack_branches = [b for b in state["to_restack"] if b in original_shas]
+    for branch in reversed(upstack_branches):
+        sha = original_shas[branch]
+        if not quiet and not output_json:
+            err.print(f"→ restoring {branch!r} to {sha[:8]}...", end=" ")
+        git.reset_branch_to(branch, sha)
+        restored.append(branch)
+        if not quiet and not output_json:
+            err.print("✓", style="green")
+
+    target = state["branch"]
+    if not quiet and not output_json:
+        err.print(f"→ restoring {target!r} to {state['original_sha'][:8]}...", end=" ")
+    git.reset_branch_to(target, state["original_sha"])
+    restored.append(target)
+    if not quiet and not output_json:
+        err.print("✓", style="green")
+
+    # Land on the target branch so the user is in a clean state
+    if git.current_branch() != target:
+        git.checkout(target)
+
+    _clear_edit_state(root)
+
+    aborted: EditAbortedResult = {
+        "ok": True,
+        "state": "aborted",
+        "branch": target,
+        "restored_sha": state["original_sha"],
+        "restored_branches": restored,
+    }
+    if output_json:
+        out.print_json(_json.dumps(aborted))
+    elif not quiet:
+        err.print(f"→ edit aborted — {len(restored)} branch(es) restored", style="dim")
+
+
+def _do_continue(
+    root: Path,
+    data: dict,
+    state: _EditState,
+    *,
+    no_push: bool,
+    output_json: bool,
+    quiet: bool,
+) -> None:
+    """Resume a paused arc edit after the user resolves rebase conflicts."""
+    restacked = list(state["restacked"])
+    to_restack = state["to_restack"]
+    original_shas = state["original_shas"]
+    summary = _get_amendment_summary(state["original_sha"], state["amended_sha"])
+
+    # Determine the branch that was conflicting
+    conflict_branch = to_restack[len(restacked)]
+
+    if git.is_mid_rebase(root):
+        # User staged their resolution; finish the current rebase
+        if not quiet and not output_json:
+            err.print(f"→ continuing rebase on {conflict_branch!r}...", end=" ")
+        result = git.rebase_continue()
+        if result.returncode != 0:
+            # Rebase --continue hit another conflict patch
+            conflict_sha = git.get_sha("HEAD") if not git.is_mid_rebase(root) else ""
+            if not quiet and not output_json:
+                err.print("CONFLICT", style="red")
+            updated_state: _EditState = {**state, "restacked": restacked}
+            _handle_conflict(
+                root,
+                updated_state,
+                conflict_branch,
+                conflict_sha,
+                summary=summary,
+                output_json=output_json,
+                quiet=quiet,
+            )
+        if not quiet and not output_json:
+            err.print("✓", style="green")
+    else:
+        # User ran git rebase --continue manually; accept current branch state
+        if not quiet and not output_json:
+            err.print(
+                f"→ rebase already finished for {conflict_branch!r} (resolved externally)",
+                style="dim",
+            )
+
+    restacked.append(conflict_branch)
+
+    # Continue restacking the remaining branches
+    remaining = to_restack[len(restacked) :]
+    new_restacked, conflict_branch2, conflict_sha2 = _restack_upstack(
+        remaining, original_shas, data, root, quiet=quiet, output_json=output_json
+    )
+    restacked.extend(new_restacked)
+
+    if conflict_branch2 is not None:
+        updated_state2: _EditState = {**state, "restacked": restacked}
+        _handle_conflict(
+            root,
+            updated_state2,
+            conflict_branch2,
+            conflict_sha2 or "",
+            summary=summary,
+            output_json=output_json,
+            quiet=quiet,
+        )
+
+    # All restacked — push and emit done
+    pushed: list[str] = []
+    if not no_push:
+        to_push = [state["branch"]] + restacked
+        if not quiet and not output_json:
+            err.print(f"→ force-pushing {len(to_push)} branches...", end=" ")
+        git.force_push(to_push)
+        pushed = to_push
+        if not quiet and not output_json:
+            err.print("✓", style="green")
+
+    _clear_edit_state(root)
+
+    done: EditDoneResult = {
+        "ok": True,
+        "state": "done",
+        "mode": state["mode"],
+        "branch": state["branch"],
+        "old_sha": state["original_sha"],
+        "new_sha": state["amended_sha"],
+        "amendment_summary": summary,
+        "restacked": restacked,
+        "pushed": pushed,
+    }
+    if output_json:
+        out.print_json(_json.dumps(done))
+    elif not quiet:
+        _shared._maybe_print_periodic_hint(root)

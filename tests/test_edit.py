@@ -298,3 +298,258 @@ def test_edit_dry_run_shows_upstack(stacked_repo):
     assert "feat/api" in data_out["upstack"]
     assert "feat/tests" in data_out["upstack"]
     assert isinstance(data_out["predicted_conflicts"], list)
+
+
+# ── _do_abort tests ───────────────────────────────────────────────────────────
+
+
+def _sha(cwd, ref):
+    import subprocess as sp
+
+    return sp.run(
+        ["git", "rev-parse", ref], cwd=cwd, capture_output=True, text=True, check=True
+    ).stdout.strip()
+
+
+def _make_edit_state(stacked_repo, *, restacked=None, to_restack=None):
+    """Return an _EditState with original SHAs captured before any amendment."""
+    import subprocess as sp
+
+    from arc.commands.edit import _EditState
+
+    root = stacked_repo
+    sp.run(["git", "checkout", "feat/auth"], cwd=root, check=True, capture_output=True)
+
+    auth_sha = _sha(root, "feat/auth")
+    api_sha = _sha(root, "feat/api")
+    tests_sha = _sha(root, "feat/tests")
+
+    # Amend feat/auth (message only, no file change)
+    sp.run(
+        ["git", "commit", "--amend", "-m", "amended auth"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    new_auth_sha = _sha(root, "feat/auth")
+
+    state: _EditState = {
+        "branch": "feat/auth",
+        "mode": "message",
+        "original_sha": auth_sha,
+        "amended_sha": new_auth_sha,
+        "to_restack": to_restack if to_restack is not None else ["feat/api", "feat/tests"],
+        "restacked": restacked if restacked is not None else [],
+        "original_shas": {
+            "feat/auth": auth_sha,
+            "feat/api": api_sha,
+            "feat/tests": tests_sha,
+        },
+        "started_at": "2026-06-17T10:00:00Z",
+    }
+    return state, auth_sha, api_sha, tests_sha, new_auth_sha
+
+
+@pytest.mark.git
+def test_do_abort_restores_branches(stacked_repo):
+    """_do_abort resets all branches to their original SHAs and clears state."""
+    from arc.commands.edit import _do_abort, _load_edit_state, _save_edit_state
+
+    root = stacked_repo
+    state, auth_sha, api_sha, tests_sha, _ = _make_edit_state(stacked_repo)
+    _save_edit_state(root, state)
+
+    orig = _os.getcwd()
+    _os.chdir(root)
+    _do_abort(root, state, output_json=True, quiet=True)
+    _os.chdir(orig)
+
+    assert _sha(root, "feat/auth") == auth_sha
+    assert _sha(root, "feat/api") == api_sha
+    assert _sha(root, "feat/tests") == tests_sha
+    assert _load_edit_state(root) is None
+
+
+@pytest.mark.git
+def test_do_abort_json_output(stacked_repo):
+    """_do_abort emits an EditAbortedResult JSON blob."""
+    from click.testing import CliRunner
+
+    from arc.commands.edit import _save_edit_state, edit_cmd
+
+    root = stacked_repo
+    state, auth_sha, _, _, _ = _make_edit_state(stacked_repo)
+    _save_edit_state(root, state)
+
+    runner = CliRunner()
+    orig = _os.getcwd()
+    _os.chdir(root)
+    result = runner.invoke(edit_cmd, ["--abort", "--json"], catch_exceptions=False)
+    _os.chdir(orig)
+
+    assert result.exit_code == 0, result.output
+    data_out = json.loads(result.output)
+    assert data_out["ok"] is True
+    assert data_out["state"] == "aborted"
+    assert data_out["branch"] == "feat/auth"
+    assert data_out["restored_sha"] == auth_sha
+    assert "feat/auth" in data_out["restored_branches"]
+
+
+@pytest.mark.git
+def test_do_abort_when_mid_rebase(stacked_repo):
+    """_do_abort calls git rebase --abort before restoring when mid-rebase."""
+    from unittest.mock import patch
+
+    from arc.commands.edit import _do_abort, _save_edit_state
+
+    root = stacked_repo
+    state, auth_sha, api_sha, tests_sha, _ = _make_edit_state(stacked_repo)
+    _save_edit_state(root, state)
+
+    abort_called = []
+
+    def fake_rebase_abort():
+        abort_called.append(True)
+
+    orig = _os.getcwd()
+    _os.chdir(root)
+    with patch("arc.commands.edit.git.is_mid_rebase", return_value=True):
+        with patch("arc.commands.edit.git.rebase_abort", side_effect=fake_rebase_abort):
+            _do_abort(root, state, output_json=True, quiet=True)
+    _os.chdir(orig)
+
+    assert abort_called, "rebase_abort should have been called when mid-rebase"
+    assert _sha(root, "feat/auth") == auth_sha
+
+
+# ── _do_continue tests ────────────────────────────────────────────────────────
+
+
+@pytest.mark.git
+def test_do_continue_not_mid_rebase_finishes_restack(stacked_repo):
+    """Continue when user resolved conflict manually (not mid-rebase): restacks remaining branches."""
+    import subprocess as sp
+
+    from arc.commands.edit import _do_continue, _load_edit_state, _save_edit_state
+
+    root = stacked_repo
+    state, auth_sha, api_sha, tests_sha, new_auth_sha = _make_edit_state(stacked_repo)
+
+    # Simulate user manually rebasing feat/api onto the amended feat/auth
+    sp.run(
+        ["git", "rebase", "--onto", new_auth_sha, auth_sha, "feat/api"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    # feat/tests still has old feat/api as parent (not yet restacked)
+
+    # State reflects conflict was on feat/api, no branches restacked yet
+    # original_shas[feat/api] is the PRE-manual-rebase sha (api_sha)
+    _save_edit_state(root, state)
+
+    from arc import state as st
+
+    data = st.load(root)
+
+    orig = _os.getcwd()
+    _os.chdir(root)
+    with __import__("unittest.mock", fromlist=["patch"]).patch(
+        "arc.commands.edit.git.is_mid_rebase", return_value=False
+    ):
+        _do_continue(root, data, state, no_push=True, output_json=True, quiet=True)
+    _os.chdir(orig)
+
+    # feat/tests must have been rebased (new SHA)
+    assert _sha(root, "feat/tests") != tests_sha
+    # State file must be cleared
+    assert _load_edit_state(root) is None
+
+
+@pytest.mark.git
+def test_do_continue_json_done_output(stacked_repo):
+    """_do_continue emits EditDoneResult JSON on success."""
+    import subprocess as sp
+
+    from click.testing import CliRunner
+
+    from arc.commands.edit import _save_edit_state, edit_cmd
+
+    root = stacked_repo
+    state, auth_sha, api_sha, _, new_auth_sha = _make_edit_state(stacked_repo)
+
+    # Manually rebase feat/api so we're not mid-rebase
+    sp.run(
+        ["git", "rebase", "--onto", new_auth_sha, auth_sha, "feat/api"],
+        cwd=root,
+        check=True,
+        capture_output=True,
+    )
+    # to_restack only has feat/api (it's the conflict branch); feat/tests is outside scope
+    state["to_restack"] = ["feat/api"]
+    _save_edit_state(root, state)
+
+    runner = CliRunner()
+    orig = _os.getcwd()
+    _os.chdir(root)
+    with __import__("unittest.mock", fromlist=["patch"]).patch(
+        "arc.commands.edit.git.is_mid_rebase", return_value=False
+    ):
+        result = runner.invoke(
+            edit_cmd, ["--continue", "--no-push", "--json"], catch_exceptions=False
+        )
+    _os.chdir(orig)
+
+    assert result.exit_code == 0, result.output
+    data_out = json.loads(result.output)
+    assert data_out["ok"] is True
+    assert data_out["state"] == "done"
+    assert data_out["branch"] == "feat/auth"
+    assert data_out["old_sha"] == auth_sha
+    assert data_out["new_sha"] == new_auth_sha
+
+
+@pytest.mark.git
+def test_do_continue_mid_rebase_success(stacked_repo):
+    """_do_continue calls rebase_continue when mid-rebase, then completes."""
+    from unittest.mock import patch
+
+    from arc.commands.edit import _do_continue, _load_edit_state, _save_edit_state
+
+    root = stacked_repo
+    state, auth_sha, api_sha, tests_sha, new_auth_sha = _make_edit_state(stacked_repo)
+    # Only feat/api to restack; simulate it's the conflict branch
+    state["to_restack"] = ["feat/api"]
+    _save_edit_state(root, state)
+
+    from arc import state as st
+
+    data = st.load(root)
+
+    rebase_continue_called = []
+
+    import subprocess
+
+    def fake_rebase_continue():
+        rebase_continue_called.append(True)
+        # Simulate success: rebase feat/api manually so git is clean
+        subprocess.run(
+            ["git", "rebase", "--onto", new_auth_sha, auth_sha, "feat/api"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+        )
+        return subprocess.CompletedProcess([], 0)
+
+    orig = _os.getcwd()
+    _os.chdir(root)
+    with patch("arc.commands.edit.git.is_mid_rebase", return_value=True):
+        with patch("arc.commands.edit.git.rebase_continue", side_effect=fake_rebase_continue):
+            _do_continue(root, data, state, no_push=True, output_json=True, quiet=True)
+    _os.chdir(orig)
+
+    assert rebase_continue_called, "rebase_continue should have been called"
+    assert _load_edit_state(root) is None
+    # feat/api was rebased in fake_rebase_continue
+    assert _sha(root, "feat/api") != api_sha
