@@ -168,3 +168,100 @@ def test_is_squash_merged_false_when_unique_commits(git_repo):
     from arc.git import is_squash_merged
 
     assert is_squash_merged(git_repo, "feat/a", "main") is False
+
+
+@pytest.mark.git
+def test_get_staged_files_empty(git_repo):
+    import os
+
+    orig = os.getcwd()
+    try:
+        os.chdir(git_repo)
+        assert git.get_staged_files() == []
+    finally:
+        os.chdir(orig)
+
+
+@pytest.mark.git
+def test_get_staged_files_with_staged(git_repo):
+    import os
+    import subprocess
+
+    orig = os.getcwd()
+    try:
+        os.chdir(git_repo)
+        (git_repo / "new.py").write_text("x = 1")
+        subprocess.run(["git", "add", "new.py"], cwd=git_repo, check=True, capture_output=True)
+        assert "new.py" in git.get_staged_files()
+    finally:
+        os.chdir(orig)
+
+
+@pytest.mark.git
+def test_amend_staged_no_edit(git_repo):
+    import os
+    import subprocess
+
+    orig = os.getcwd()
+    try:
+        os.chdir(git_repo)
+        old_sha = git.get_sha("HEAD")
+        (git_repo / "new.py").write_text("x = 1")
+        subprocess.run(["git", "add", "new.py"], cwd=git_repo, check=True, capture_output=True)
+        git.amend_staged()
+        new_sha = git.get_sha("HEAD")
+        assert new_sha != old_sha
+    finally:
+        os.chdir(orig)
+
+
+@pytest.mark.git
+def test_diff_stat_returns_correct_counts(git_repo):
+    import os
+    import subprocess
+
+    orig = os.getcwd()
+    try:
+        os.chdir(git_repo)
+        old_sha = git.get_sha("HEAD")
+        (git_repo / "a.py").write_text("line1\nline2\n")
+        subprocess.run(["git", "add", "a.py"], cwd=git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add a"], cwd=git_repo, check=True, capture_output=True
+        )
+        new_sha = git.get_sha("HEAD")
+        stat = git.diff_stat(old_sha, new_sha)
+        assert "a.py" in stat["files_changed"]
+        assert stat["insertions"] == 2
+        assert stat["deletions"] == 0
+    finally:
+        os.chdir(orig)
+
+
+@pytest.mark.git
+def test_is_mid_rebase_false_when_clean(git_repo):
+    assert git.is_mid_rebase(git_repo) is False
+
+
+@pytest.mark.git
+def test_reset_branch_to_other_branch(git_repo):
+    import os
+    import subprocess
+
+    orig = os.getcwd()
+    try:
+        os.chdir(git_repo)
+        old_sha = git.get_sha("HEAD")
+        (git_repo / "b.py").write_text("y = 2")
+        subprocess.run(["git", "add", "b.py"], cwd=git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add b"], cwd=git_repo, check=True, capture_output=True
+        )
+        subprocess.run(
+            ["git", "checkout", "-b", "tmp-branch"], cwd=git_repo, check=True, capture_output=True
+        )
+        git.reset_branch_to("main", old_sha)
+        subprocess.run(["git", "checkout", "main"], cwd=git_repo, check=True, capture_output=True)
+        assert git.get_sha("HEAD") == old_sha
+    finally:
+        os.chdir(orig)
