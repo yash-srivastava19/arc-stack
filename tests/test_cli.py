@@ -349,7 +349,7 @@ def test_sync_cascades_rebase(tmp_path):
     _write_state_with_branches(tmp_path)
     rebase_calls = []
 
-    def fake_rebase(onto):
+    def fake_rebase_fp(onto):
         rebase_calls.append(onto)
         r = MagicMock()
         r.returncode = 0
@@ -359,7 +359,7 @@ def test_sync_cascades_rebase(tmp_path):
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.fetch"),
-        patch("arc.git.rebase", side_effect=fake_rebase),
+        patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fp),
         patch("arc.git.checkout"),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.github.get_pr", return_value=None),
@@ -378,7 +378,7 @@ def test_sync_exits_3_on_conflict(tmp_path):
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.fetch"),
-        patch("arc.git.rebase", return_value=conflict_result),
+        patch("arc.git.rebase_fork_point", return_value=conflict_result),
         patch("arc.git.checkout"),
         patch("arc.git.rebase_abort"),
         patch("arc.git.get_sha", return_value="abc"),
@@ -714,6 +714,111 @@ def test_land_reopens_and_retargets_auto_closed_prs(tmp_path):
     assert (43, "main") in retarget_calls, "should retarget to parent after reopen"
 
 
+def test_land_auto_promotes_next_pr_to_ready(tmp_path):
+    """arc land marks the new bottom-of-stack PR as ready after landing."""
+    _write_state_with_pr_above(tmp_path)
+    promoted = []
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value=None),
+        patch("arc.git.get_sha", return_value="sha"),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase", return_value=MagicMock(returncode=0)),
+        patch("arc.git.delete_branch"),
+        patch("arc.github.get_pr_state", return_value="OPEN"),
+        patch("arc.github.update_pr_base", return_value=True),
+        patch("arc.github.mark_pr_ready", side_effect=lambda n: promoted.append(n)),
+    ):
+        result = runner.invoke(cli, ["land", "feat/auth", "-f"])
+    assert result.exit_code == 0, result.output
+    assert 43 in promoted, "feat/api's PR #43 should be promoted to ready"
+
+
+def test_land_no_auto_promote_when_disabled_in_config(tmp_path):
+    """auto_promote_on_land: false in config suppresses the mark-ready call."""
+    _write_state_with_pr_above(tmp_path)
+    (tmp_path / ".arc" / "config.json").write_text(
+        _json.dumps({"auto_promote_on_land": False})
+    )
+    promoted = []
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value=None),
+        patch("arc.git.get_sha", return_value="sha"),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase", return_value=MagicMock(returncode=0)),
+        patch("arc.git.delete_branch"),
+        patch("arc.github.get_pr_state", return_value="OPEN"),
+        patch("arc.github.update_pr_base", return_value=True),
+        patch("arc.github.mark_pr_ready", side_effect=lambda n: promoted.append(n)),
+    ):
+        result = runner.invoke(cli, ["land", "feat/auth", "-f"])
+    assert result.exit_code == 0, result.output
+    assert promoted == [], "mark_pr_ready should not be called when auto_promote_on_land is false"
+
+
+def test_land_no_auto_promote_when_no_above_branches(tmp_path):
+    """arc land does not call mark_pr_ready when there are no branches above."""
+    _write_state(
+        tmp_path,
+        branches=[{"name": "feat/auth", "pr_number": 42, "revision": 1}],
+    )
+    promoted = []
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value=None),
+        patch("arc.git.get_sha", return_value="sha"),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.git.checkout"),
+        patch("arc.git.delete_branch"),
+        patch("arc.github.mark_pr_ready", side_effect=lambda n: promoted.append(n)),
+    ):
+        result = runner.invoke(cli, ["land", "feat/auth", "-f"])
+    assert result.exit_code == 0, result.output
+    assert promoted == [], "no mark_pr_ready when stack has no branches above"
+
+
+def test_sync_uses_fork_point_rebase(tmp_path):
+    """arc sync uses git rebase --fork-point so amended parent commits don't replay."""
+    _write_state(
+        tmp_path,
+        branches=[{"name": "feat/a", "pr_number": None, "revision": 0}],
+    )
+    fork_point_calls = []
+    plain_rebase_calls = []
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/a"),
+        patch("arc.git.fetch"),
+        patch("arc.git.refresh_index"),
+        patch("arc.git.branch_exists", return_value=True),
+        patch("arc.git.is_squash_merged", return_value=False),
+        patch("arc.git.get_sha", return_value="abc"),
+        patch("arc.git.checkout"),
+        patch(
+            "arc.git.rebase_fork_point",
+            side_effect=lambda _: fork_point_calls.append(True) or MagicMock(returncode=0),
+        ),
+        patch(
+            "arc.git.rebase",
+            side_effect=lambda _: plain_rebase_calls.append(True) or MagicMock(returncode=0),
+        ),
+    ):
+        result = runner.invoke(cli, ["sync"])
+    assert result.exit_code == 0, result.output
+    assert fork_point_calls, "sync must call rebase_fork_point"
+    assert not plain_rebase_calls, "sync must not fall back to plain rebase"
+
+
 def test_sync_refresh_index_called_before_rebase(tmp_path):
     """arc sync calls git.refresh_index before rebasing to clear phantom mtime diffs."""
     _write_state(
@@ -732,7 +837,7 @@ def test_sync_refresh_index_called_before_rebase(tmp_path):
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.checkout"),
         patch(
-            "arc.git.rebase",
+            "arc.git.rebase_fork_point",
             side_effect=lambda _: call_order.append("rebase") or MagicMock(returncode=0),
         ),
     ):
@@ -762,7 +867,7 @@ def test_sync_pre_rebase_failure_shows_clear_error(tmp_path):
         patch("arc.git.is_squash_merged", return_value=False),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.checkout"),
-        patch("arc.git.rebase", return_value=failed_result),
+        patch("arc.git.rebase_fork_point", return_value=failed_result),
         # Not mid-rebase: rebase never started
         patch("arc.git.is_mid_rebase", return_value=False),
     ):
@@ -1401,7 +1506,7 @@ def test_sync_detects_squash_merged_branch(arc_root, monkeypatch):
     monkeypatch.setattr(_git, "current_branch", lambda: "feat/b")
     monkeypatch.setattr(_git, "is_squash_merged", lambda root, branch, base: branch == "feat/a")
     monkeypatch.setattr(_git, "is_ancestor", lambda a, b: True)
-    monkeypatch.setattr(_git, "rebase", lambda onto: type("R", (), {"returncode": 0})())
+    monkeypatch.setattr(_git, "rebase_fork_point", lambda onto: type("R", (), {"returncode": 0})())
     monkeypatch.setattr(_git, "checkout", lambda b: None)
     monkeypatch.setattr(_git, "branch_exists", lambda b: True)
     monkeypatch.setattr(_git, "delete_branch", lambda b, force=False: None)
