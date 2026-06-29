@@ -166,6 +166,7 @@ def _do_amend(
     elif mode == "staged":
         git.amend_staged()
     else:  # mode == "message"
+        assert message is not None
         git.amend_message(message)
     return git.get_sha("HEAD")
 
@@ -386,7 +387,7 @@ def edit_cmd(
     # ── Handle conflict ───────────────────────────────────────────────────────
     if conflict_branch is not None:
         remaining = upstack[upstack.index(conflict_branch) + 1 :]
-        edit_state: _EditState = {
+        new_edit_state: _EditState = {
             "branch": target,
             "mode": mode,
             "original_sha": old_sha,
@@ -396,7 +397,7 @@ def edit_cmd(
             "original_shas": original_shas,
             "started_at": datetime.now(UTC).isoformat(),
         }
-        _save_edit_state(root, edit_state)
+        _save_edit_state(root, new_edit_state)
         paused: EditPausedResult = {
             "ok": False,
             "state": "paused",
@@ -407,7 +408,7 @@ def edit_cmd(
             "amendment_summary": summary,
             "restacked": restacked,
             "conflict_branch": conflict_branch,
-            "conflict_sha": conflict_sha,
+            "conflict_sha": conflict_sha or "",
             "conflicted_files": git.conflicted_files(),
             "remaining": remaining,
             "exit_code": 3,
