@@ -12,8 +12,8 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
           enable-cache: true
@@ -33,8 +33,8 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v7
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v5
         with:
           python-version: "3.11"
           enable-cache: true
