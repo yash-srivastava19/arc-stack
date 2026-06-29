@@ -740,9 +740,7 @@ def test_land_auto_promotes_next_pr_to_ready(tmp_path):
 def test_land_no_auto_promote_when_disabled_in_config(tmp_path):
     """auto_promote_on_land: false in config suppresses the mark-ready call."""
     _write_state_with_pr_above(tmp_path)
-    (tmp_path / ".arc" / "config.json").write_text(
-        _json.dumps({"auto_promote_on_land": False})
-    )
+    (tmp_path / ".arc" / "config.json").write_text(_json.dumps({"auto_promote_on_land": False}))
     promoted = []
     runner = CliRunner()
     with (
