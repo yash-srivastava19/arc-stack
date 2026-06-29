@@ -226,7 +226,9 @@ def test_diff_stat_returns_correct_counts(git_repo):
         old_sha = git.get_sha("HEAD")
         (git_repo / "a.py").write_text("line1\nline2\n")
         subprocess.run(["git", "add", "a.py"], cwd=git_repo, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "add a"], cwd=git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add a"], cwd=git_repo, check=True, capture_output=True
+        )
         new_sha = git.get_sha("HEAD")
         stat = git.diff_stat(old_sha, new_sha)
         assert "a.py" in stat["files_changed"]
@@ -252,8 +254,12 @@ def test_reset_branch_to_other_branch(git_repo):
         old_sha = git.get_sha("HEAD")
         (git_repo / "b.py").write_text("y = 2")
         subprocess.run(["git", "add", "b.py"], cwd=git_repo, check=True, capture_output=True)
-        subprocess.run(["git", "commit", "-m", "add b"], cwd=git_repo, check=True, capture_output=True)
-        subprocess.run(["git", "checkout", "-b", "tmp-branch"], cwd=git_repo, check=True, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add b"], cwd=git_repo, check=True, capture_output=True
+        )
+        subprocess.run(
+            ["git", "checkout", "-b", "tmp-branch"], cwd=git_repo, check=True, capture_output=True
+        )
         git.reset_branch_to("main", old_sha)
         subprocess.run(["git", "checkout", "main"], cwd=git_repo, check=True, capture_output=True)
         assert git.get_sha("HEAD") == old_sha
