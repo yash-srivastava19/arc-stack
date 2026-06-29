@@ -122,3 +122,33 @@ def arc_stack(git_repo):
     }
     st.save(root, data)
     return root
+
+
+@pytest.fixture
+def stacked_repo(arc_stack):
+    """A real arc stack with 3 branches: feat/auth → feat/api → feat/tests.
+    Checked out on feat/auth. Each branch has one unique file."""
+    import subprocess as sp
+
+    root = arc_stack
+    from arc import state as st
+
+    for branch, filename, content in [
+        ("feat/auth", "auth.py", "def auth(): pass\n"),
+        ("feat/api", "api.py", "def api(): pass\n"),
+        ("feat/tests", "tests.py", "def test_api(): pass\n"),
+    ]:
+        sp.run(["git", "checkout", "-b", branch], cwd=root, check=True, capture_output=True)
+        (root / filename).write_text(content)
+        sp.run(["git", "add", filename], cwd=root, check=True, capture_output=True)
+        sp.run(
+            ["git", "commit", "-m", f"add {filename}"], cwd=root, check=True, capture_output=True
+        )
+
+    sp.run(["git", "checkout", "feat/auth"], cwd=root, check=True, capture_output=True)
+
+    data = st.init_state(base="main")
+    for b in ("feat/auth", "feat/api", "feat/tests"):
+        data = st.add_branch(data, b)
+    st.save(root, data)
+    return root
