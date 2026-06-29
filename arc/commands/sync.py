@@ -203,8 +203,15 @@ def push_cmd(dry_run, quiet, output_json, skip_hooks):
             output_json=output_json,
             quiet=quiet,
         )
-        git.force_push(names)
-        for name in names:
+        to_push = _shared.filter_merged_before_push(
+            names, data, root, quiet=quiet, output_json=output_json
+        )
+        if not to_push:
+            if not quiet:
+                err.print("Nothing to push — all branches already merged.")
+            return
+        git.force_push(to_push)
+        for name in to_push:
             branch_entry = st.get_branch(data, name)
             assert branch_entry is not None
             current_rev = branch_entry["revision"]
@@ -220,7 +227,11 @@ def push_cmd(dry_run, quiet, output_json, skip_hooks):
             quiet=quiet,
         )
         if not quiet:
-            err.print(f"Pushed {len(names)} branches. Run 'arc submit' to create pull requests.")
+            skipped = len(names) - len(to_push)
+            skip_note = f" ({skipped} already merged, skipped)" if skipped else ""
+            err.print(
+                f"Pushed {len(to_push)} branch(es).{skip_note} Run 'arc submit' to create pull requests."
+            )
         _shared._maybe_print_periodic_hint(root)
     except SystemExit:
         raise

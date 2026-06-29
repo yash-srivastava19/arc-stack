@@ -151,6 +151,51 @@ def _open_editor(template: str) -> str:
         os.unlink(temp_path)
 
 
+def filter_merged_before_push(
+    names: list[str],
+    data: dict,
+    root,
+    *,
+    quiet: bool = False,
+    output_json: bool = False,
+) -> list[str]:
+    """Return only the branches in *names* that are safe to push.
+
+    Skips branches that are already merged into the stack base.  Two checks
+    run in order (cheapest first):
+      1. Local git-cherry squash-merge detection (no network).
+      2. GitHub PR state via `gh pr view` (network, only when pr_number exists).
+
+    Warns about each skipped branch so the user knows why it was dropped.
+    The caller is responsible for deciding whether to update arc state.
+    """
+    from pathlib import Path as _Path
+
+    base = data.get("base", "main")
+    safe: list[str] = []
+    for name in names:
+        # ── 1. local squash-merge check (fast, no network) ───────────────────
+        if git.is_squash_merged(_Path(root) if not hasattr(root, "is_dir") else root, name, base):
+            if not quiet and not output_json:
+                err.print(
+                    f"↓ {name!r} is already merged into {base!r} — skipping push",
+                    style="yellow",
+                )
+            continue
+        # ── 2. GitHub PR state check (slow, requires network) ─────────────────
+        branch_entry = st.get_branch(data, name)
+        pr_number = branch_entry.get("pr_number") if branch_entry else None
+        if pr_number and github.pr_is_merged(pr_number):
+            if not quiet and not output_json:
+                err.print(
+                    f"↓ {name!r} (PR #{pr_number}) is already merged — skipping push",
+                    style="yellow",
+                )
+            continue
+        safe.append(name)
+    return safe
+
+
 def run_lifecycle_hook(
     root,
     data: dict,

@@ -400,10 +400,48 @@ def test_push_force_pushes_all_branches(tmp_path):
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.force_push") as mock_push,
+        patch("arc.git.is_squash_merged", return_value=False),
+        patch("arc.github.pr_is_merged", return_value=False),
     ):
         result = runner.invoke(cli, ["push"])
     assert result.exit_code == 0
     mock_push.assert_called_once_with(["feat/auth", "feat/api"])
+
+
+def test_push_skips_merged_branches(tmp_path):
+    """arc push silently skips branches whose PR is already merged."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    # feat/auth (pr_number=42) is merged; feat/api (no PR) is not squash-merged
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.force_push") as mock_push,
+        patch("arc.git.is_squash_merged", return_value=False),
+        patch("arc.github.pr_is_merged", return_value=True),
+    ):
+        result = runner.invoke(cli, ["push"])
+    assert result.exit_code == 0
+    # Only feat/api should be pushed (feat/auth's PR is merged; feat/api has no pr_number)
+    mock_push.assert_called_once_with(["feat/api"])
+    assert "already merged" in result.output
+
+
+def test_push_skips_squash_merged_branches(tmp_path):
+    """arc push skips branches detected as squash-merged into base via git cherry."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+
+    def _is_squash_merged(_root, branch, _base):
+        return branch == "feat/auth"
+
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.force_push") as mock_push,
+        patch("arc.git.is_squash_merged", side_effect=_is_squash_merged),
+    ):
+        result = runner.invoke(cli, ["push"])
+    assert result.exit_code == 0
+    mock_push.assert_called_once_with(["feat/api"])
 
 
 def test_push_dry_run(tmp_path):
@@ -423,7 +461,12 @@ def test_push_dry_run(tmp_path):
 def test_push_increments_revision(tmp_path):
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
-    with patch("arc.git.find_repo_root", return_value=tmp_path), patch("arc.git.force_push"):
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.force_push"),
+        patch("arc.git.is_squash_merged", return_value=False),
+        patch("arc.github.pr_is_merged", return_value=False),
+    ):
         runner.invoke(cli, ["push"])
     data = _json.loads((tmp_path / ".arc" / "state.json").read_text())
     assert data["branches"][0]["revision"] == 2  # was 1

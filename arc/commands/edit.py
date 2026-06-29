@@ -409,13 +409,16 @@ def edit_cmd(
     # ── Success ───────────────────────────────────────────────────────────────
     pushed: list[str] = []
     if not no_push:
-        to_push = [target] + restacked
-        if not quiet and not output_json:
-            err.print(f"→ force-pushing {len(to_push)} branches...", end=" ")
-        git.force_push(to_push)
-        pushed = to_push
-        if not quiet and not output_json:
-            err.print("✓", style="green")
+        to_push = _shared.filter_merged_before_push(
+            [target] + restacked, data, root, quiet=quiet, output_json=output_json
+        )
+        if to_push:
+            if not quiet and not output_json:
+                err.print(f"→ force-pushing {len(to_push)} branches...", end=" ")
+            git.force_push(to_push)
+            pushed = to_push
+            if not quiet and not output_json:
+                err.print("✓", style="green")
 
     _shared.run_lifecycle_hook(
         root,
@@ -607,13 +610,16 @@ def _do_continue(
     # All restacked — push and emit done
     pushed: list[str] = []
     if not no_push:
-        to_push = [state["branch"]] + restacked
-        if not quiet and not output_json:
-            err.print(f"→ force-pushing {len(to_push)} branches...", end=" ")
-        git.force_push(to_push)
-        pushed = to_push
-        if not quiet and not output_json:
-            err.print("✓", style="green")
+        to_push = _shared.filter_merged_before_push(
+            [state["branch"]] + restacked, data, root, quiet=quiet, output_json=output_json
+        )
+        if to_push:
+            if not quiet and not output_json:
+                err.print(f"→ force-pushing {len(to_push)} branches...", end=" ")
+            git.force_push(to_push)
+            pushed = to_push
+            if not quiet and not output_json:
+                err.print("✓", style="green")
 
     _clear_edit_state(root)
 

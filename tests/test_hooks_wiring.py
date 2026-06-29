@@ -72,42 +72,55 @@ def test_run_lifecycle_hook_passes_context(tmp_path):
     assert capture.read_text().strip() == "pre-push|feat/a|41"
 
 
-def _patched_push_env(tmp_path):
+def test_push_pre_push_gate_aborts_before_push(tmp_path):
     from unittest.mock import patch
 
-    return (
+    _write_state(tmp_path)
+    _write_hook(tmp_path, "pre-push", "exit 1")
+    with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/a"),
         patch("arc.git.get_sha", return_value="abc1234567890"),
-        patch("arc.git.force_push"),
-    )
-
-
-def test_push_pre_push_gate_aborts_before_push(tmp_path):
-    _write_state(tmp_path)
-    _write_hook(tmp_path, "pre-push", "exit 1")
-    p_root, p_branch, p_sha, p_push = _patched_push_env(tmp_path)
-    with p_root, p_branch, p_sha, p_push as mock_push:
+        patch("arc.git.force_push") as mock_push,
+        patch("arc.git.is_squash_merged", return_value=False),
+        patch("arc.github.pr_is_merged", return_value=False),
+    ):
         result = CliRunner().invoke(cli, ["push"])
     assert result.exit_code == 7
     mock_push.assert_not_called()
 
 
 def test_push_skip_hooks_bypasses_gate(tmp_path):
+    from unittest.mock import patch
+
     _write_state(tmp_path)
     _write_hook(tmp_path, "pre-push", "exit 1")
-    p_root, p_branch, p_sha, p_push = _patched_push_env(tmp_path)
-    with p_root, p_branch, p_sha, p_push as mock_push:
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/a"),
+        patch("arc.git.get_sha", return_value="abc1234567890"),
+        patch("arc.git.force_push") as mock_push,
+        patch("arc.git.is_squash_merged", return_value=False),
+        patch("arc.github.pr_is_merged", return_value=False),
+    ):
         result = CliRunner().invoke(cli, ["push", "--skip-hooks"])
     assert result.exit_code == 0
     mock_push.assert_called_once()
 
 
 def test_push_post_push_failure_does_not_fail_command(tmp_path):
+    from unittest.mock import patch
+
     _write_state(tmp_path)
     _write_hook(tmp_path, "post-push", "exit 1")
-    p_root, p_branch, p_sha, p_push = _patched_push_env(tmp_path)
-    with p_root, p_branch, p_sha, p_push:
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/a"),
+        patch("arc.git.get_sha", return_value="abc1234567890"),
+        patch("arc.git.force_push"),
+        patch("arc.git.is_squash_merged", return_value=False),
+        patch("arc.github.pr_is_merged", return_value=False),
+    ):
         result = CliRunner().invoke(cli, ["push"])
     assert result.exit_code == 0
 
@@ -223,10 +236,18 @@ def test_submit_post_submit_fires_on_update_path(tmp_path):
 
 def test_gate_failure_json_payload_shape(tmp_path):
     """--json gate failure emits the structured error envelope on stdout."""
+    from unittest.mock import patch
+
     _write_state(tmp_path)
     _write_hook(tmp_path, "pre-push", "exit 1")
-    p_root, p_branch, p_sha, p_push = _patched_push_env(tmp_path)
-    with p_root, p_branch, p_sha, p_push:
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/a"),
+        patch("arc.git.get_sha", return_value="abc1234567890"),
+        patch("arc.git.force_push"),
+        patch("arc.git.is_squash_merged", return_value=False),
+        patch("arc.github.pr_is_merged", return_value=False),
+    ):
         result = CliRunner().invoke(cli, ["push", "--json"])
     assert result.exit_code == 7
     payload = _json.loads(result.output[result.output.index("{") :])
