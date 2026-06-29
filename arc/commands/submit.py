@@ -94,6 +94,14 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
                 if not b["pr_number"]:
                     data = st.update_branch(data, name, pr_number=pr_number)
                 github.update_pr_body(pr_number, body)
+                # Retarget if the base changed (e.g. after arc land moved the PR up the stack)
+                if existing.get("baseRefName") and existing["baseRefName"] != base:
+                    if not quiet:
+                        err.print(
+                            f"→ retargeting PR #{pr_number} ({name}): "
+                            f"{existing['baseRefName']} → {base}"
+                        )
+                    github.update_pr_base(pr_number, base)
                 if mark_open:
                     github.mark_pr_ready(pr_number)
                 entry = {
@@ -243,7 +251,7 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
             if squash_merged:
                 result = git.rebase_onto(parent, target, ab)
             else:
-                result = git.rebase(parent)
+                result = git.rebase_fork_point(parent)
             if result.returncode != 0:
                 for n, sha in pre_shas.items():
                     try:

@@ -68,6 +68,19 @@ def doctor_cmd() -> None:
         else:
             err.print("  stack not initialized in this repo (run arc init)", style="dim")
 
+        edit_state_path = root / ".arc" / "edit-in-progress.json"
+        if edit_state_path.exists():
+            if git.is_mid_rebase(root):
+                err.print(
+                    "⚠  arc edit is paused mid-rebase — run 'arc edit --continue' or 'arc edit --abort'",
+                    style="yellow",
+                )
+            else:
+                err.print(
+                    "⚠  stale edit-in-progress.json found (no active rebase) — run 'arc edit --abort' to clean up",
+                    style="yellow",
+                )
+
         hooks_dir = root / ".arc" / "hooks"
         if hooks_dir.is_dir():
             from arc.hooks import EVENTS

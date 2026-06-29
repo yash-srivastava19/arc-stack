@@ -535,6 +535,101 @@ def test_submit_updates_existing_prs(tmp_path):
     assert 42 in updated
 
 
+def test_submit_retargets_stale_pr_base(tmp_path):
+    """arc submit updates PR base when the stack position changed since the last submit."""
+    _write_state_with_branches(tmp_path)
+    retargeted = []
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.get_commit_subject", return_value="feat"),
+        patch("arc.git.get_commit_body", return_value=""),
+        patch("arc.git.commit_count", return_value=1),
+        patch(
+            "arc.github.get_pr",
+            # PR base is currently "old-base" but arc computes it should be "main"
+            return_value={
+                "number": 42,
+                "url": "https://gh/42",
+                "state": "OPEN",
+                "baseRefName": "old-base",
+            },
+        ),
+        patch("arc.github.update_pr_body"),
+        patch(
+            "arc.github.update_pr_base",
+            side_effect=lambda n, b: retargeted.append((n, b)) or True,
+        ),
+    ):
+        result = runner.invoke(cli, ["submit"])
+    assert result.exit_code == 0, result.output
+    assert (42, "main") in retargeted, "PR should be retargeted to 'main' (the computed base)"
+
+
+def test_submit_no_retarget_when_base_unchanged(tmp_path):
+    """arc submit does not call update_pr_base when the PR base already matches."""
+    # Single-branch stack: computed base is "main", PR already targets "main"
+    _write_state(tmp_path, branches=[{"name": "feat/auth", "pr_number": 42, "revision": 1}])
+    retargeted = []
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.get_commit_subject", return_value="feat"),
+        patch("arc.git.get_commit_body", return_value=""),
+        patch("arc.git.commit_count", return_value=1),
+        patch(
+            "arc.github.get_pr",
+            return_value={
+                "number": 42,
+                "url": "https://gh/42",
+                "state": "OPEN",
+                "baseRefName": "main",  # already correct
+            },
+        ),
+        patch("arc.github.update_pr_body"),
+        patch(
+            "arc.github.update_pr_base",
+            side_effect=lambda n, b: retargeted.append((n, b)) or True,
+        ),
+    ):
+        result = runner.invoke(cli, ["submit"])
+    assert result.exit_code == 0, result.output
+    assert retargeted == [], "no retarget call when base is already correct"
+
+
+def test_status_warns_when_edit_in_progress(tmp_path):
+    """arc status prints a warning when .arc/edit-in-progress.json exists."""
+    _write_state_with_branches(tmp_path)
+    (tmp_path / ".arc" / "edit-in-progress.json").write_text('{"target": "feat/auth"}')
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.commit_count", return_value=1),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.github.get_pr", return_value=None),
+    ):
+        result = runner.invoke(cli, ["status"])
+    assert "edit" in result.output.lower()
+    assert "continue" in result.output.lower() or "abort" in result.output.lower()
+
+
+def test_status_no_warning_without_edit_state(tmp_path):
+    """arc status does not print edit warning when no edit is in progress."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.commit_count", return_value=1),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.github.get_pr", return_value=None),
+    ):
+        result = runner.invoke(cli, ["status"])
+    assert "edit-in-progress" not in result.output
+    assert "arc edit --continue" not in result.output
+
+
 def test_submit_runs_hooks_and_fails(tmp_path):
     _write_state_no_prs(tmp_path)
     cfg = {"hooks": {"pre-submit": ["exit 1"]}}
@@ -726,7 +821,7 @@ def test_land_auto_promotes_next_pr_to_ready(tmp_path):
         patch("arc.git.get_sha", return_value="sha"),
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.git.checkout"),
-        patch("arc.git.rebase", return_value=MagicMock(returncode=0)),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
         patch("arc.git.delete_branch"),
         patch("arc.github.get_pr_state", return_value="OPEN"),
         patch("arc.github.update_pr_base", return_value=True),
@@ -750,7 +845,7 @@ def test_land_no_auto_promote_when_disabled_in_config(tmp_path):
         patch("arc.git.get_sha", return_value="sha"),
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.git.checkout"),
-        patch("arc.git.rebase", return_value=MagicMock(returncode=0)),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
         patch("arc.git.delete_branch"),
         patch("arc.github.get_pr_state", return_value="OPEN"),
         patch("arc.github.update_pr_base", return_value=True),
@@ -964,7 +1059,7 @@ def test_rebase_entire_stack(tmp_path):
     _write_state_with_branches(tmp_path)
     rebase_calls = []
 
-    def fake_rebase(onto):
+    def fake_rebase_fp(onto):
         rebase_calls.append(onto)
         r = MagicMock()
         r.returncode = 0
@@ -975,7 +1070,7 @@ def test_rebase_entire_stack(tmp_path):
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/auth"),
         patch("arc.git.checkout"),
-        patch("arc.git.rebase", side_effect=fake_rebase),
+        patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fp),
     ):
         result = runner.invoke(cli, ["rebase"])
     assert result.exit_code == 0
@@ -986,7 +1081,7 @@ def test_rebase_upstack(tmp_path):
     _write_state_with_branches(tmp_path)
     rebase_calls = []
 
-    def fake_rebase(onto):
+    def fake_rebase_fp(onto):
         rebase_calls.append(onto)
         r = MagicMock()
         r.returncode = 0
@@ -997,7 +1092,7 @@ def test_rebase_upstack(tmp_path):
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/auth"),
         patch("arc.git.checkout"),
-        patch("arc.git.rebase", side_effect=fake_rebase),
+        patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fp),
     ):
         result = runner.invoke(cli, ["rebase", "--upstack"])
     assert result.exit_code == 0
@@ -1394,7 +1489,9 @@ def test_restack_rebases_branch_onto_parent(arc_root, monkeypatch):
     monkeypatch.setattr(_gh, "is_authenticated", lambda: True)
     rebase_calls = []
     monkeypatch.setattr(
-        _git, "rebase", lambda onto: rebase_calls.append(onto) or type("R", (), {"returncode": 0})()
+        _git,
+        "rebase_fork_point",
+        lambda onto: rebase_calls.append(onto) or type("R", (), {"returncode": 0})(),
     )
     monkeypatch.setattr(_git, "checkout", lambda b: None)
     monkeypatch.setattr(_git, "current_branch", lambda: "feat/b")
