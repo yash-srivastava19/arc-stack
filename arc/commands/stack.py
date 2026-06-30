@@ -373,3 +373,89 @@ def stack_analyze_cmd(output_json: bool) -> None:
         out.print(f"\nSAFE TO LAND NOW: {', '.join(analysis.safe_to_land)}")
     if analysis.blocked:
         out.print(f"CRITICAL PATH: {' → '.join(analysis.critical_path)}")
+
+
+@stack_group.command("snapshot")
+@click.option("--json", "output_json", is_flag=True)
+def stack_snapshot_cmd(output_json: bool) -> None:
+    """Full stack snapshot: status + PR health + analysis in one call.
+
+    Returns everything a dashboard needs without multiple round-trips:
+    per-branch CI status, review approval, draft state, and the analysis
+    (safe-to-land, blocked, critical path, merge queue).
+    """
+    output_json = _shared._resolve_output_json(output_json)
+    if not _shared._check_setup():
+        sys.exit(6)
+    root = git.find_repo_root()
+    data = _shared._load_state_or_exit(root, output_json=output_json)
+
+    current = git.current_branch()
+    names = st.branch_names(data)
+
+    try:
+        commit_counts = {n: git.commit_count(data["base"], n) for n in names}
+    except Exception:
+        _shared._exit_json_error(
+            f"base branch '{data['base']}' not found — run `arc init --base <branch>` to fix",
+            exit_code=1,
+            output_json=output_json,
+        )
+
+    needs_rebase_flags = {n: not git.is_ancestor(ops.parent_branch(data, n), n) for n in names}
+    pr_info = _gather_pr_info(data)
+    status = ops.stack_status(data, current, commit_counts, pr_info, needs_rebase_flags)
+
+    # Per-branch PR health (CI, reviews, draft, merge queue)
+    pr_health: dict[str, dict] = {}
+    for b in data["branches"]:
+        if b.get("pr_number"):
+            pr_health[b["name"]] = github.get_pr_status(b["pr_number"])
+        else:
+            pr_health[b["name"]] = {
+                "approved": False,
+                "ci_passing": None,
+                "draft": True,
+                "in_merge_queue": False,
+            }
+
+    # Stack intelligence analysis (safe-to-land, blocked, critical path)
+    analysis: dict = {}
+    if names:
+        from arc import graph as _graph
+
+        result = _graph.analyze_stack(data, pr_health)
+        analysis = {
+            "critical_path": result.critical_path,
+            "safe_to_land": result.safe_to_land,
+            "blocked": result.blocked,
+            "in_merge_queue": result.in_merge_queue,
+        }
+
+    # Merge health into each branch entry for a self-contained response
+    import json as _j
+
+    for branch in status["branches"]:
+        branch["pr_health"] = pr_health.get(branch["name"], {})
+
+    snapshot = {
+        "base": status["base"],
+        "current_branch": status["current_branch"],
+        "branches": status["branches"],
+        "analysis": analysis,
+    }
+
+    if output_json:
+        out.print_json(_j.dumps(snapshot))
+        return
+
+    # Human-readable summary
+    err.print(f"Stack  base: {snapshot['base']}  ({len(names)} branches)")
+    for b in status["branches"]:
+        h = b["pr_health"]
+        ci = "✓" if h.get("ci_passing") else "✗" if h.get("ci_passing") is False else "·"
+        rv = "approved" if h.get("approved") else "pending"
+        draft = " [draft]" if h.get("draft") else ""
+        pr = f"PR #{b['pr_number']}" if b["pr_number"] else "no PR"
+        rebase = "  ← needs rebase" if b["needs_rebase"] else ""
+        err.print(f"  {ci} {b['name']}  {pr}  CI:{ci}  review:{rv}{draft}{rebase}")

@@ -1666,6 +1666,74 @@ def test_stack_analyze_shows_safe_to_land(arc_root, monkeypatch):
     assert "feat/b" in result.output
 
 
+def test_stack_snapshot_json_shape(arc_root, monkeypatch):
+    """arc stack snapshot --json returns base, current_branch, branches with pr_health, and analysis."""
+    from arc import github as _gh
+    from arc.state import save as _save
+
+    monkeypatch.chdir(arc_root)
+    _save(
+        arc_root,
+        {
+            "version": 1,
+            "base": "main",
+            "prefix": None,
+            "metadata": {},
+            "branches": [
+                {"name": "feat/a", "pr_number": 10, "revision": 1},
+                {"name": "feat/b", "pr_number": 11, "revision": 1},
+            ],
+        },
+    )
+    monkeypatch.setattr(
+        _gh,
+        "get_pr_status",
+        lambda n: (
+            {"approved": True, "ci_passing": True, "draft": False, "in_merge_queue": False}
+            if n == 10
+            else {"approved": False, "ci_passing": True, "draft": False, "in_merge_queue": False}
+        ),
+    )
+    monkeypatch.setattr(_gh, "get_pr", lambda _: None)
+    monkeypatch.setattr("arc.git.is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_authenticated", lambda: True)
+    monkeypatch.setattr("arc.git.current_branch", lambda: "feat/a")
+    monkeypatch.setattr("arc.git.commit_count", lambda base, branch: 1)
+    monkeypatch.setattr("arc.git.is_ancestor", lambda a, b: True)
+
+    result = CliRunner().invoke(cli, ["stack", "snapshot", "--json"])
+    assert result.exit_code == 0, result.output
+    payload = _json.loads(result.output)
+
+    assert payload["base"] == "main"
+    assert "current_branch" in payload
+    assert len(payload["branches"]) == 2
+
+    branch_a = next(b for b in payload["branches"] if b["name"] == "feat/a")
+    assert branch_a["pr_health"]["approved"] is True
+    assert branch_a["pr_health"]["ci_passing"] is True
+
+    branch_b = next(b for b in payload["branches"] if b["name"] == "feat/b")
+    assert branch_b["pr_health"]["approved"] is False
+
+    assert "critical_path" in payload["analysis"]
+    assert "safe_to_land" in payload["analysis"]
+    assert "blocked" in payload["analysis"]
+    assert "feat/a" in payload["analysis"]["safe_to_land"]
+
+
+def test_stack_snapshot_empty_stack_exits(arc_root, monkeypatch):
+    """arc stack snapshot on an empty stack exits with code 1."""
+    monkeypatch.chdir(arc_root)
+    monkeypatch.setattr("arc.git.is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_installed", lambda: True)
+    monkeypatch.setattr("arc.github.is_authenticated", lambda: True)
+
+    result = CliRunner().invoke(cli, ["stack", "snapshot", "--json"])
+    assert result.exit_code != 0
+
+
 def test_submit_prints_async_hint_when_parent_in_merge_queue(arc_root, monkeypatch):
     from arc import git as _git
     from arc import github as _gh
@@ -2015,4 +2083,4 @@ def test_cli_command_inventory_unchanged():
     }
     assert set(cli.commands.keys()) == expected
     assert set(cli.commands["config"].commands.keys()) == {"get", "set", "list"}
-    assert set(cli.commands["stack"].commands.keys()) == {"analyze"}
+    assert set(cli.commands["stack"].commands.keys()) == {"analyze", "snapshot"}
