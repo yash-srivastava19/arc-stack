@@ -11,16 +11,7 @@ Stacked PRs fix this — break a large change into a chain of small, focused dif
 
 `arc` removes that friction.
 
-```
-$ arc status
-
-main
-└── feat/auth        PR #42  ✓  2 commits  (rev 3)
-    └── feat/api     PR #43  ✗  3 commits  (rev 1)  ← needs rebase
-        └── feat/ui  no PR   ✓  1 commit
-
-→ Run 'arc sync' to rebase feat/api onto feat/auth.
-```
+![arc demo](assets/demo.gif)
 
 One command keeps the whole stack current. Another opens all the PRs — with a stack map in each description so reviewers can navigate. When a PR merges, `arc land` rebases everything above it and removes it from the stack.
 
