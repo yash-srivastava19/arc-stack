@@ -28,6 +28,12 @@ from arc.commands.stack import (
     stack_group,
     status_cmd,
 )
+from arc.commands.stack import (
+    stack_analyze_cmd as stack_analyze_cmd,
+)
+from arc.commands.stack import (
+    stack_snapshot_cmd as stack_snapshot_cmd,
+)
 from arc.commands.submit import land_cmd, submit_cmd
 from arc.commands.sync import push_cmd, rebase_cmd, restack_cmd, sync_cmd
 
