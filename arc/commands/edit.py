@@ -239,8 +239,7 @@ def edit_cmd(
     quiet,
 ):
     """Amend a branch's HEAD commit and restack all upstack branches."""
-    if not output_json and not _shared._is_tty():
-        output_json = True
+    output_json = _shared._resolve_output_json(output_json)
 
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root, output_json=output_json)

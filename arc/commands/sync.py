@@ -14,13 +14,12 @@ from arc.commands._shared import err
 
 
 def detect_merged_branches(data: dict) -> set[str]:
-    """Find branches in state that are actually merged (PR was merged on GitHub)."""
-    merged = set()
-    for branch in data["branches"]:
-        pr_number = branch.get("pr_number")
-        if pr_number and github.pr_is_merged(pr_number):
-            merged.add(branch["name"])
-    return merged
+    """Find branches in state whose PR was merged on GitHub."""
+    return {
+        b["name"]
+        for b in data["branches"]
+        if b.get("pr_number") and github.pr_is_merged(b["pr_number"])
+    }
 
 
 def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = False) -> dict:
@@ -48,6 +47,51 @@ def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = 
     return data
 
 
+def _scan_squash_merged(data: dict, root, dry_run: bool, quiet: bool) -> tuple[set[str], dict]:
+    """Detect squash-merged branches, remove them locally, and return (removed, updated_data)."""
+    squash_merged: set[str] = set()
+    for b in data["branches"]:
+        name = b["name"]
+        if git.branch_exists(name) and git.is_squash_merged(root, name, data["base"]):
+            squash_merged.add(name)
+            if not quiet:
+                err.print(
+                    f"↓ {name} detected as squash-merged into {data['base']} — removing from stack."
+                )
+            if not dry_run:
+                if git.current_branch() == name:
+                    git.checkout(data["base"])
+                git.delete_branch(name, force=True)
+    if squash_merged and not dry_run:
+        data["branches"] = [b for b in data["branches"] if b["name"] not in squash_merged]
+        st.save(root, data)
+    return squash_merged, data
+
+
+def _rollback_shas(pre_shas: dict) -> None:
+    """Best-effort reset of all branches to their pre-rebase SHAs."""
+    for name, sha in pre_shas.items():
+        try:
+            git.checkout(name)
+            git._run(["git", "reset", "--hard", sha])
+        except Exception:
+            pass
+
+
+def _prune_merged_branches(data: dict, root, quiet: bool) -> dict:
+    """Retarget PRs above merged branches, prune from state, save, and return updated data."""
+    merged_branches = detect_merged_branches(data)
+    if not merged_branches:
+        return data
+    data = retarget_dependent_prs(data, merged_branches, quiet)
+    for name in merged_branches:
+        if not quiet:
+            err.print(f"↓ {name} is merged — removed from stack.")
+    data["branches"] = [b for b in data["branches"] if b["name"] not in merged_branches]
+    st.save(root, data)
+    return data
+
+
 @click.command("sync")
 @click.option("-n", "--dry-run", is_flag=True)
 @click.option("-q", "--quiet", is_flag=True)
@@ -55,8 +99,7 @@ def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = 
 @click.option("--skip-hooks", is_flag=True)
 def sync_cmd(dry_run, quiet, output_json, skip_hooks):
     """Fetch and cascade-rebase the stack."""
-    if not output_json and not _shared._is_tty():
-        output_json = True
+    output_json = _shared._resolve_output_json(output_json)
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root, output_json=output_json)
     if not st.branch_names(data):
@@ -64,7 +107,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
         err.print("hint: run arc new <branch> to create your first branch", style="dim")
         return
 
-    try:
+    with _shared.with_error_hint(root):
         _shared.run_lifecycle_hook(
             root,
             data,
@@ -85,23 +128,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
         if not quiet:
             err.print("done.")
 
-        # Squash-merge recovery: detect and remove branches already squash-merged into base
-        squash_merged: set[str] = set()
-        for b in data["branches"]:
-            name = b["name"]
-            if git.branch_exists(name) and git.is_squash_merged(root, name, data["base"]):
-                squash_merged.add(name)
-                if not quiet:
-                    err.print(
-                        f"↓ {name} detected as squash-merged into {data['base']} — removing from stack."
-                    )
-                if not dry_run:
-                    if git.current_branch() == name:
-                        git.checkout(data["base"])
-                    git.delete_branch(name, force=True)
-        if squash_merged and not dry_run:
-            data["branches"] = [b for b in data["branches"] if b["name"] not in squash_merged]
-            st.save(root, data)
+        _, data = _scan_squash_merged(data, root, dry_run, quiet)
 
         # Conflict prediction: warn about adjacent branches that modify the same files
         if not dry_run and len(data.get("branches", [])) > 1:
@@ -117,9 +144,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                 err.print("   Proceeding with sync — resolve conflicts if they occur.", style="dim")
 
         plan = ops.rebase_plan(data)
-        pre_shas = {}
-        if not dry_run:
-            pre_shas = {b["name"]: git.get_sha(b["name"]) for b in data["branches"]}
+        pre_shas = {} if dry_run else {b["name"]: git.get_sha(b["name"]) for b in data["branches"]}
 
         for step in plan:
             branch, onto = step["branch"], step["onto"]
@@ -134,12 +159,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                 if not git.is_mid_rebase(root):
                     # Rebase never started — pre-condition failure (unstaged changes,
                     # locked index, etc.) not a real merge conflict.
-                    for name, sha in pre_shas.items():
-                        try:
-                            git.checkout(name)
-                            git._run(["git", "reset", "--hard", sha])
-                        except Exception:
-                            pass
+                    _rollback_shas(pre_shas)
                     err.print(
                         f"Could not start rebase of {branch}: {result.stderr.strip() or 'see git status'}",
                         style="red",
@@ -151,12 +171,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                     sys.exit(3)
                 # Real merge conflict — abort and roll back all rebases in this run
                 git.rebase_abort()
-                for name, sha in pre_shas.items():
-                    try:
-                        git.checkout(name)
-                        git._run(["git", "reset", "--hard", sha])
-                    except Exception:
-                        pass
+                _rollback_shas(pre_shas)
                 files = git.conflicted_files()
                 err.print(f"Conflict in {branch}. Resolve: {', '.join(files) or 'see git status'}")
                 err.print("Then run 'arc rebase --continue' or 'arc rebase --abort'.")
@@ -164,15 +179,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                 sys.exit(3)
 
         if not dry_run:
-            # Auto-retarget PRs whose base was merged
-            merged_branches = detect_merged_branches(data)
-            if merged_branches:
-                data = retarget_dependent_prs(data, merged_branches, quiet)
-                for name in merged_branches:
-                    if not quiet:
-                        err.print(f"↓ {name} is merged — removed from stack.")
-                data["branches"] = [b for b in data["branches"] if b["name"] not in merged_branches]
-                st.save(root, data)
+            data = _prune_merged_branches(data, root, quiet)
 
         if not dry_run and not quiet:
             err.print("Stack synced. Run 'arc push' to push to remote.")
@@ -187,11 +194,6 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                 quiet=quiet,
             )
             _shared._maybe_print_periodic_hint(root)
-    except SystemExit:
-        raise
-    except Exception:
-        _shared._maybe_print_error_hint(root)
-        raise
 
 
 @click.command("push")
@@ -201,20 +203,19 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
 @click.option("--skip-hooks", is_flag=True)
 def push_cmd(dry_run, quiet, output_json, skip_hooks):
     """Force-push all stack branches to remote."""
-    if not output_json and not _shared._is_tty():
-        output_json = True
+    output_json = _shared._resolve_output_json(output_json)
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root, output_json=output_json)
     names = st.branch_names(data)
     if not names:
         err.print("Stack is empty.")
         return
-    try:
-        if dry_run:
-            for name in names:
-                sha = git.get_sha(name)
-                err.print(f"\\[dry-run] push {name} ({sha[:8]})")
-            return
+    if dry_run:
+        for name in names:
+            sha = git.get_sha(name)
+            err.print(f"\\[dry-run] push {name} ({sha[:8]})")
+        return
+    with _shared.with_error_hint(root):
         current = git.current_branch()
         _shared.run_lifecycle_hook(
             root,
@@ -236,8 +237,7 @@ def push_cmd(dry_run, quiet, output_json, skip_hooks):
         for name in to_push:
             branch_entry = st.get_branch(data, name)
             assert branch_entry is not None
-            current_rev = branch_entry["revision"]
-            data = st.update_branch(data, name, revision=current_rev + 1)
+            data = st.update_branch(data, name, revision=branch_entry["revision"] + 1)
         st.save(root, data)
         _shared.run_lifecycle_hook(
             root,
@@ -255,11 +255,6 @@ def push_cmd(dry_run, quiet, output_json, skip_hooks):
                 f"Pushed {len(to_push)} branch(es).{skip_note} Run 'arc submit' to create pull requests."
             )
         _shared._maybe_print_periodic_hint(root)
-    except SystemExit:
-        raise
-    except Exception:
-        _shared._maybe_print_error_hint(root)
-        raise
 
 
 @click.command("restack")
@@ -331,7 +326,7 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
 
     plan = [s for s in ops.rebase_plan(data) if s["branch"] in targets]
 
-    try:
+    with _shared.with_error_hint(root):
         for step in plan:
             branch, onto = step["branch"], step["onto"]
             if dry_run:
@@ -351,8 +346,3 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
 
         if not dry_run and not quiet:
             err.print("Rebase complete.")
-    except SystemExit:
-        raise
-    except Exception:
-        _shared._maybe_print_error_hint(root)
-        raise

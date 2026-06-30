@@ -1020,7 +1020,7 @@ def test_drop_removes_branch_and_restacks(tmp_path):
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.checkout"),
-        patch("arc.git.rebase", side_effect=fake_rebase),
+        patch("arc.git.rebase_fork_point", side_effect=fake_rebase),
     ):
         result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
     assert result.exit_code == 0
@@ -1042,7 +1042,7 @@ def test_drop_dry_run(tmp_path):
     runner = CliRunner()
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
-        patch("arc.git.rebase") as mock_rebase,
+        patch("arc.git.rebase_fork_point") as mock_rebase,
     ):
         result = runner.invoke(cli, ["drop", "feat/auth", "-n"])
     assert result.exit_code == 0

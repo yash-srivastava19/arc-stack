@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import subprocess
 
+from arc.const import CI_ERROR, CI_FAILURE, CI_SUCCESS, PR_MERGED, REVIEW_APPROVED
+
 _VERBOSE = False  # module-level flag set by cli
 
 
@@ -59,25 +61,8 @@ def update_pr_body(number: int, body: str) -> None:
 
 
 def update_pr_base(pr_number: int, new_base: str) -> bool:
-    """Update a PR's base branch.
-
-    Args:
-        pr_number: The PR number to update
-        new_base: The new base branch name
-
-    Returns:
-        True if the update succeeded, False otherwise
-    """
-    try:
-        result = subprocess.run(
-            ["gh", "pr", "edit", str(pr_number), "--base", new_base],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        return result.returncode == 0
-    except Exception:
-        return False
+    result = _run(["gh", "pr", "edit", str(pr_number), "--base", new_base], check=False)
+    return result.returncode == 0
 
 
 def mark_pr_ready(number: int) -> None:
@@ -96,7 +81,7 @@ def pr_is_merged(number: int) -> bool:
     result = _run(["gh", "pr", "view", str(number), "--json", "state"], check=False)
     if result.returncode != 0:
         return False
-    return json.loads(result.stdout).get("state") == "MERGED"
+    return json.loads(result.stdout).get("state") == PR_MERGED
 
 
 def get_pr_state(number: int) -> str | None:
@@ -139,14 +124,14 @@ def get_pr_status(pr_number: int) -> dict:
     checks = data.get("statusCheckRollup") or []
     if not checks:
         ci_passing = None
-    elif all(c.get("conclusion") == "SUCCESS" for c in checks):
+    elif all(c.get("conclusion") == CI_SUCCESS for c in checks):
         ci_passing = True
-    elif any(c.get("conclusion") in ("FAILURE", "ERROR") for c in checks):
+    elif any(c.get("conclusion") in (CI_FAILURE, CI_ERROR) for c in checks):
         ci_passing = False
     else:
         ci_passing = None
     return {
-        "approved": data.get("reviewDecision") == "APPROVED",
+        "approved": data.get("reviewDecision") == REVIEW_APPROVED,
         "ci_passing": ci_passing,
         "draft": data.get("isDraft", False),
         "in_merge_queue": bool(data.get("mergeQueueEntry")),
@@ -154,33 +139,14 @@ def get_pr_status(pr_number: int) -> dict:
 
 
 def create_issue(title: str, body: str) -> dict | None:
-    """Create a GitHub issue via gh CLI.
-
-    Args:
-        title: The issue title
-        body: The issue body (markdown)
-
-    Returns:
-        dict with "number" and "html_url" keys, or None on failure
-    """
     try:
-        result = _run(
-            ["gh", "issue", "create", "--title", title, "--body", body],
-            check=False,
-        )
-
-        if result.returncode != 0:
-            return None
-
-        # gh outputs the issue URL: https://github.com/owner/repo/issues/42
-        url = result.stdout.strip()
-
-        # Extract issue number from URL
-        issue_number = int(url.split("/")[-1])
-
-        return {
-            "number": issue_number,
-            "html_url": url,
-        }
+        result = _run(["gh", "issue", "create", "--title", title, "--body", body], check=False)
     except Exception:
+        return None
+    if result.returncode != 0:
+        return None
+    url = result.stdout.strip()
+    try:
+        return {"number": int(url.split("/")[-1]), "html_url": url}
+    except (ValueError, IndexError):
         return None

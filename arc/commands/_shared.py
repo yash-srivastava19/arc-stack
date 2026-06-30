@@ -9,11 +9,13 @@ an attribute on the shared instance works regardless of import path.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import random
 import subprocess as _subprocess
 import sys
 import tempfile
+from collections.abc import Generator
 from typing import NoReturn
 
 from rich.console import Console
@@ -92,6 +94,23 @@ def _check_setup() -> bool:
 def _is_tty() -> bool:
     """Return True if stdout is a TTY. Extracted for testability."""
     return sys.stdout.isatty()
+
+
+def _resolve_output_json(output_json: bool) -> bool:
+    """Force JSON output when stdout is not a TTY (piped / scripted use)."""
+    return output_json or not _is_tty()
+
+
+@contextlib.contextmanager
+def with_error_hint(root) -> Generator[None, None, None]:
+    """Print the bug-report hint on unexpected exceptions, then re-raise."""
+    try:
+        yield
+    except SystemExit:
+        raise
+    except Exception:
+        _maybe_print_error_hint(root)
+        raise
 
 
 def _exit_json_error(
