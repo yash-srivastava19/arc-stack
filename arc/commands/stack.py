@@ -136,14 +136,30 @@ def add_cmd(branch, quiet):
         err.print(f"Branch {name} added to stack.")
 
 
+def _gather_pr_info(data: dict) -> dict:
+    """Fetch live PR state for each branch that has a PR number."""
+    from arc.const import PR_MERGED
+
+    pr_info: dict = {}
+    for b in data["branches"]:
+        if b["pr_number"]:
+            info = github.get_pr(b["name"])
+            if info:
+                pr_info[b["name"]] = {
+                    "pr_url": info.get("url"),
+                    "pr_state": info.get("state"),
+                    "is_merged": info.get("state") == PR_MERGED,
+                }
+    return pr_info
+
+
 @click.command("status")
 @click.option("--json", "output_json", is_flag=True)
 @click.option("--plain", is_flag=True)
 @click.option("-q", "--quiet", is_flag=True)
 def status_cmd(output_json, plain, quiet):
     """Show the current stack."""
-    if not output_json and not _shared._is_tty():
-        output_json = True
+    output_json = _shared._resolve_output_json(output_json)
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root, output_json=output_json)
 
@@ -166,16 +182,7 @@ def status_cmd(output_json, plain, quiet):
             output_json=output_json,
         )
     needs_rebase_flags = {n: not git.is_ancestor(ops.parent_branch(data, n), n) for n in names}
-    pr_info = {}
-    for b in data["branches"]:
-        if b["pr_number"]:
-            info = github.get_pr(b["name"])
-            if info:
-                pr_info[b["name"]] = {
-                    "pr_url": info.get("url"),
-                    "pr_state": info.get("state"),
-                    "is_merged": info.get("state") == "MERGED",
-                }
+    pr_info = _gather_pr_info(data)
 
     status = ops.stack_status(data, current, commit_counts, pr_info, needs_rebase_flags)
 
@@ -269,8 +276,7 @@ def amend_cmd(quiet):
 @click.pass_context
 def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
     """Remove a branch from the stack and restack above it."""
-    if not output_json and not _shared._is_tty():
-        output_json = True
+    output_json = _shared._resolve_output_json(output_json)
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root, output_json=output_json)
     name = st.apply_prefix(data, branch)
@@ -292,10 +298,10 @@ def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
         for ab in above:
             err.print(f"\\[dry-run] rebase {ab} onto {parent}")
         return
-    try:
+    with _shared.with_error_hint(root):
         for ab in above:
             git.checkout(ab)
-            result = git.rebase(parent)
+            result = git.rebase_fork_point(parent)
             if result.returncode != 0:
                 git.rebase_abort()
                 err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
@@ -305,11 +311,6 @@ def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
         st.save(root, data)
         if not quiet:
             err.print(f"{name} removed from stack.")
-    except SystemExit:
-        raise
-    except Exception:
-        _shared._maybe_print_error_hint(root)
-        raise
 
 
 @click.group("stack")

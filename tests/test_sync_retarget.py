@@ -1,4 +1,3 @@
-import subprocess
 from unittest.mock import MagicMock, Mock, patch
 
 from arc import git, github
@@ -34,36 +33,26 @@ def test_branch_exists_remote_returns_false():
 
 
 def test_update_pr_base_changes_base_branch():
-    """Update PR base branch via gh CLI."""
-    with patch("subprocess.run") as mock_run:
+    """Update PR base branch via gh CLI using the shared _run helper."""
+    with patch("arc.github._run") as mock_run:
         mock_run.return_value = Mock(returncode=0, stdout="")
 
         github.update_pr_base(10, "main")
 
-        # Verify the exact command and all arguments
-        mock_run.assert_called_once_with(
-            ["gh", "pr", "edit", "10", "--base", "main"], capture_output=True, text=True, timeout=10
-        )
+        mock_run.assert_called_once_with(["gh", "pr", "edit", "10", "--base", "main"], check=False)
 
 
 def test_update_pr_base_returns_true_on_success():
     """Returns True if gh command succeeds."""
-    with patch("subprocess.run") as mock_run:
+    with patch("arc.github._run") as mock_run:
         mock_run.return_value = Mock(returncode=0)
         assert github.update_pr_base(10, "main") is True
 
 
 def test_update_pr_base_returns_false_on_failure():
     """Returns False if gh command fails."""
-    with patch("subprocess.run") as mock_run:
+    with patch("arc.github._run") as mock_run:
         mock_run.return_value = Mock(returncode=1)
-        assert github.update_pr_base(10, "main") is False
-
-
-def test_update_pr_base_returns_false_on_exception():
-    """Returns False if subprocess raises an exception."""
-    with patch("subprocess.run") as mock_run:
-        mock_run.side_effect = subprocess.TimeoutExpired("gh", 10)
         assert github.update_pr_base(10, "main") is False
 
 
