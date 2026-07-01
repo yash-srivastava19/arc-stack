@@ -28,6 +28,10 @@ One command keeps the whole stack current. Another opens all the PRs — with a 
 ## Install
 
 ```bash
+# macOS (Homebrew)
+brew install yash-srivastava19/arc/arc-prs
+
+# Python (any OS)
 pipx install arc-prs
 # or
 uv tool install arc-prs
