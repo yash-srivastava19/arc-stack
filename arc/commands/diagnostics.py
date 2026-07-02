@@ -12,6 +12,39 @@ from arc.commands import _shared
 from arc.commands._shared import err, out
 
 
+def _install_completions() -> str | None:
+    """Write the completion hook to the user's shell rc file.
+
+    Returns a human-readable description of what was done, or None if the
+    shell is unsupported or the hook was already present.
+    """
+    from pathlib import Path
+
+    shell = os.path.basename(os.environ.get("SHELL", ""))
+    home = Path.home()
+
+    if shell == "zsh":
+        rc = home / ".zshrc"
+        line = 'eval "$(arc completions zsh)"'
+    elif shell == "bash":
+        rc = home / ".bashrc"
+        line = 'eval "$(arc completions bash)"'
+    elif shell == "fish":
+        rc = home / ".config" / "fish" / "config.fish"
+        line = "arc completions fish | source"
+    else:
+        return None
+
+    rc.parent.mkdir(parents=True, exist_ok=True)
+    existing = rc.read_text() if rc.exists() else ""
+    if "arc completions" in existing:
+        return f"completions already in {rc}"
+
+    with rc.open("a") as f:
+        f.write(f"\n# arc shell completions\n{line}\n")
+    return f"completions added to {rc}"
+
+
 @click.command("setup")
 @click.option("-q", "--quiet", is_flag=True)
 def setup(quiet):
@@ -19,8 +52,11 @@ def setup(quiet):
     if not _shared._check_setup():
         sys.exit(6)
     git.set_config("rerere.enabled", "true", global_=True)
+    completion_result = _install_completions()
     if not quiet:
         err.print("git rerere enabled.")
+        if completion_result:
+            err.print(completion_result)
         err.print("Ready. cd into a repo and run 'arc init' to create a stack.")
 
 
