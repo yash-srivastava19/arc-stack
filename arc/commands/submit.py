@@ -12,6 +12,7 @@ from arc import git, github, ops
 from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err, out
+from arc.state import BranchEntry, StackState
 
 
 def _run_hooks(root, hooks: list[str]) -> None:
@@ -24,10 +25,10 @@ def _run_hooks(root, hooks: list[str]) -> None:
 
 
 def _upsert_pr(
-    b: dict,
+    b: BranchEntry,
     i: int,
-    branches: list,
-    data: dict,
+    branches: list[BranchEntry],
+    data: StackState,
     base: str,
     use_draft: bool,
     mark_open: bool,
@@ -35,7 +36,7 @@ def _upsert_pr(
     quiet: bool,
     output_json: bool,
     root,
-) -> tuple[dict, dict, list, list]:
+) -> tuple[StackState, dict, list, list]:
     """Create or update the PR for one branch. Returns (updated_data, entry, created_list, updated_list)."""
     name = b["name"]
     created: list[dict] = []
@@ -177,7 +178,7 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
             _shared._maybe_print_periodic_hint(root)
 
 
-def _retarget_above_prs(above: list[str], data: dict, parent: str, quiet: bool) -> None:
+def _retarget_above_prs(above: list[str], data: StackState, parent: str, quiet: bool) -> None:
     """Retarget / reopen PRs above the landing branch before local branch deletion.
 
     GitHub auto-closes PRs whose base branch is deleted at merge time.
@@ -234,7 +235,7 @@ def _restack_above_branches(
             sys.exit(3)
 
 
-def _maybe_auto_promote(above: list[str], data: dict, root, quiet: bool) -> None:
+def _maybe_auto_promote(above: list[str], data: StackState, root, quiet: bool) -> None:
     """Promote the new bottom-of-stack PR from draft to ready after landing.
 
     Disable with: { "auto_promote_on_land": false } in .arc/config.json

@@ -22,6 +22,8 @@ from rich.console import Console
 
 from arc import git, github
 from arc import state as st
+from arc.exceptions import ArcError, NotInitializedError, StateVersionError
+from arc.state import StackState
 
 err = Console(stderr=True)
 out = Console()
@@ -108,6 +110,8 @@ def with_error_hint(root) -> Generator[None, None, None]:
         yield
     except SystemExit:
         raise
+    except ArcError:
+        raise  # typed arc errors are not unexpected bugs — no hint needed
     except Exception:
         _maybe_print_error_hint(root)
         raise
@@ -132,13 +136,15 @@ def _exit_json_error(
 def _load_state_or_exit(root, output_json: bool = False):
     try:
         return st.load(root)
-    except FileNotFoundError:
+    except NotInitializedError:
         _exit_json_error(
             "arc is not initialized in this repo.",
             exit_code=2,
             hint="run arc init --base main",
             output_json=output_json,
         )
+    except StateVersionError as e:
+        _exit_json_error(str(e), exit_code=2, output_json=output_json)
     except Exception as e:
         _exit_json_error(str(e), exit_code=2, output_json=output_json)
 
@@ -172,7 +178,7 @@ def _open_editor(template: str) -> str:
 
 def filter_merged_before_push(
     names: list[str],
-    data: dict,
+    data: StackState,
     root,
     *,
     quiet: bool = False,
@@ -217,7 +223,7 @@ def filter_merged_before_push(
 
 def run_lifecycle_hook(
     root,
-    data: dict,
+    data: StackState,
     event: str,
     *,
     branch: str = "",

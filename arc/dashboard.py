@@ -102,8 +102,8 @@ def load_stack_view(root: Path) -> StackView:
             ci_passing=ci_passing,
             approved=approved,
             draft=draft,
-            commits=branch_dict.get("commits", 0),
-            revision=branch_dict.get("revision", 0),
+            commits=0,
+            revision=branch_dict["revision"],
             blocker_reason=blocker_reason,
         )
         branches.append(branch)
