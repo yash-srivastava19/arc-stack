@@ -7,6 +7,12 @@ patch one canonical target (arc.commands._shared.*).
 Exception: the err/out Console singletons may be imported directly; they are shared instances.
 """
 
+# Anatomy of an arc command:
+#   1. Parse args via click decorators
+#   2. Call domain/infra functions (arc.git, arc.github, arc.state, arc.ops)
+#   3. Catch ArcError subclasses → _shared._exit_json_error(message, exit_code, ...)
+#   4. Print results with the `out` / `err` Rich Console singletons
+
 import click
 
 from arc.commands.config import config_group, schema_cmd

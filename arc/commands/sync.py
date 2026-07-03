@@ -231,7 +231,7 @@ def push_cmd(dry_run, quiet, output_json, skip_hooks):
             output_json=output_json,
             quiet=quiet,
         )
-        to_push = _shared.filter_merged_before_push(
+        to_push = ops.filter_merged_before_push(
             names, data, root, quiet=quiet, output_json=output_json
         )
         if not to_push:

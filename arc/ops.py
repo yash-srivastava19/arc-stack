@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path as _Path
+
+from rich.console import Console as _Console
+
+from arc import git as _git
+from arc import github as _github
 from arc import state as st
 from arc.state import StackState
 
@@ -119,3 +125,42 @@ def validate_stack(data: StackState) -> list[str]:
     if not isinstance(data.get("branches"), list):
         errors.append("Stack branches must be a list.")
     return errors
+
+
+def filter_merged_before_push(
+    names: list[str],
+    data: StackState,
+    root,
+    *,
+    quiet: bool = False,
+    output_json: bool = False,
+) -> list[str]:
+    """Return only branches in *names* that are safe to push.
+
+    Skips branches already merged into the stack base. Two checks in order:
+      1. Local git-cherry squash-merge detection (no network).
+      2. GitHub PR state via gh pr view (network, only when pr_number exists).
+    """
+    _err = _Console(stderr=True)
+    base = data.get("base", "main")
+    safe: list[str] = []
+    for name in names:
+        root_path = _Path(root) if not hasattr(root, "is_dir") else root
+        if _git.is_squash_merged(root_path, name, base):
+            if not quiet and not output_json:
+                _err.print(
+                    f"↓ {name!r} is already merged into {base!r} — skipping push",
+                    style="yellow",
+                )
+            continue
+        branch_entry = st.get_branch(data, name)
+        pr_number = branch_entry.get("pr_number") if branch_entry else None
+        if pr_number and _github.pr_is_merged(pr_number):
+            if not quiet and not output_json:
+                _err.print(
+                    f"↓ {name!r} (PR #{pr_number}) is already merged — skipping push",
+                    style="yellow",
+                )
+            continue
+        safe.append(name)
+    return safe

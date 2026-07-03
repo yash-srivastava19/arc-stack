@@ -409,7 +409,7 @@ def edit_cmd(
     # ── Success ───────────────────────────────────────────────────────────────
     pushed: list[str] = []
     if not no_push:
-        to_push = _shared.filter_merged_before_push(
+        to_push = ops.filter_merged_before_push(
             [target] + restacked, data, root, quiet=quiet, output_json=output_json
         )
         if to_push:
@@ -610,7 +610,7 @@ def _do_continue(
     # All restacked — push and emit done
     pushed: list[str] = []
     if not no_push:
-        to_push = _shared.filter_merged_before_push(
+        to_push = ops.filter_merged_before_push(
             [state["branch"]] + restacked, data, root, quiet=quiet, output_json=output_json
         )
         if to_push:
