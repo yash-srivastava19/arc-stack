@@ -13,6 +13,7 @@ from arc import graph as _graph
 from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err, out
+from arc.state import StackState
 
 _HOOKS_README = """\
 # arc lifecycle hooks
@@ -136,7 +137,7 @@ def add_cmd(branch, quiet):
         err.print(f"Branch {name} added to stack.")
 
 
-def _gather_pr_info(data: dict) -> dict:
+def _gather_pr_info(data: StackState) -> dict:
     """Fetch live PR state for each branch that has a PR number."""
     from arc.const import PR_MERGED
 
@@ -212,7 +213,7 @@ def status_cmd(output_json, plain, quiet):
     _shared._maybe_print_periodic_hint(root)
 
 
-def _stale_pr_bases(data: dict, status: dict) -> list[str]:
+def _stale_pr_bases(data: StackState, status: dict) -> list[str]:
     """Return branch names whose PR base differs from their expected stack parent."""
     stale = []
     branches = data.get("branches", [])

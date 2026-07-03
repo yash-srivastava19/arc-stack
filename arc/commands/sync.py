@@ -11,18 +11,21 @@ from arc import git, github, ops
 from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err
+from arc.state import StackState
 
 
-def detect_merged_branches(data: dict) -> set[str]:
+def detect_merged_branches(data: StackState) -> set[str]:
     """Find branches in state whose PR was merged on GitHub."""
     return {
         b["name"]
         for b in data["branches"]
-        if b.get("pr_number") and github.pr_is_merged(b["pr_number"])
+        if b["pr_number"] is not None and github.pr_is_merged(b["pr_number"])
     }
 
 
-def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = False) -> dict:
+def retarget_dependent_prs(
+    data: StackState, merged_branches: set[str], quiet: bool = False
+) -> StackState:
     """Retarget PRs whose base branch was merged, then prune merged branches from state.
 
     Note: This implementation always retargets to data["base"] (the stack root).
@@ -47,7 +50,9 @@ def retarget_dependent_prs(data: dict, merged_branches: set[str], quiet: bool = 
     return data
 
 
-def _scan_squash_merged(data: dict, root, dry_run: bool, quiet: bool) -> tuple[set[str], dict]:
+def _scan_squash_merged(
+    data: StackState, root, dry_run: bool, quiet: bool
+) -> tuple[set[str], StackState]:
     """Detect squash-merged branches, remove them locally, and return (removed, updated_data)."""
     squash_merged: set[str] = set()
     for b in data["branches"]:
@@ -78,7 +83,7 @@ def _rollback_shas(pre_shas: dict) -> None:
             pass
 
 
-def _prune_merged_branches(data: dict, root, quiet: bool) -> dict:
+def _prune_merged_branches(data: StackState, root, quiet: bool) -> StackState:
     """Retarget PRs above merged branches, prune from state, save, and return updated data."""
     merged_branches = detect_merged_branches(data)
     if not merged_branches:

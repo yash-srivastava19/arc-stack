@@ -4,6 +4,8 @@ import json
 from pathlib import Path
 from typing import Any, TypedDict
 
+from arc.exceptions import NotInitializedError, StateVersionError
+
 STATE_VERSION = 1
 
 
@@ -21,14 +23,6 @@ class StackState(TypedDict):
     metadata: dict[str, Any]
 
 
-def find_repo_root(start: Path | None = None):
-    current = start or Path.cwd()
-    for parent in [current, *current.parents]:
-        if (parent / ".git").exists():
-            return parent
-    raise RuntimeError("Not in a git repository. Run 'git init' first.")
-
-
 def _state_path(root: Path):
     return root / ".arc" / "state.json"
 
@@ -37,13 +31,13 @@ def _config_path(root: Path):
     return root / ".arc" / "config.json"
 
 
-def load(root: Path):
+def load(root: Path) -> StackState:
     path = _state_path(root)
     if not path.exists():
-        raise FileNotFoundError("No stack found. Run 'arc init' to create one.")
-    data = json.loads(path.read_text())
-    if data["version"] != STATE_VERSION:
-        raise ValueError(f"Unknown state version {data['version']}. Upgrade arc.")
+        raise NotInitializedError("No stack found. Run 'arc init' to create one.")
+    data: StackState = json.loads(path.read_text())
+    if data.get("version") != STATE_VERSION:
+        raise StateVersionError(f"Unknown state version {data.get('version')}. Upgrade arc.")
     return data
 
 

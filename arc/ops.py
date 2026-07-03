@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from arc import state as st
+from arc.state import StackState
 
 
-def parent_branch(data: dict, name: str) -> str:
+def parent_branch(data: StackState, name: str) -> str:
     names = st.branch_names(data)
     if name not in names:
         raise ValueError(f"{name!r} not in stack")
@@ -11,21 +12,21 @@ def parent_branch(data: dict, name: str) -> str:
     return data["base"] if idx == 0 else names[idx - 1]
 
 
-def upstack_branches(data: dict, name: str) -> list[str]:
+def upstack_branches(data: StackState, name: str) -> list[str]:
     names = st.branch_names(data)
     if name not in names:
         return []
     return names[names.index(name) + 1 :]
 
 
-def downstack_branches(data: dict, name: str) -> list[str]:
+def downstack_branches(data: StackState, name: str) -> list[str]:
     names = st.branch_names(data)
     if name not in names:
         return []
     return names[: names.index(name) + 1]
 
 
-def rebase_plan(data: dict, merged: set[str] | None = None) -> list[dict]:
+def rebase_plan(data: StackState, merged: set[str] | None = None) -> list[dict]:
     merged = merged or set()
     plan = []
     prev = data["base"]
@@ -39,7 +40,7 @@ def rebase_plan(data: dict, merged: set[str] | None = None) -> list[dict]:
 
 
 def stack_status(
-    state: dict,
+    state: StackState,
     current_branch: str,
     commit_counts: dict[str, int],
     pr_info: dict[str, dict],
@@ -104,14 +105,14 @@ def next_step_hint(status: dict) -> str:
     return ""
 
 
-def branch_at_index(data: dict, idx: int) -> str | None:
+def branch_at_index(data: StackState, idx: int) -> str | None:
     names = st.branch_names(data)
     if 1 <= idx <= len(names):
         return names[idx - 1]
     return None
 
 
-def validate_stack(data: dict) -> list[str]:
+def validate_stack(data: StackState) -> list[str]:
     errors = []
     if not data.get("base"):
         errors.append("Stack has no base branch configured.")
