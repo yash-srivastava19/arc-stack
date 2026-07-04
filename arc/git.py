@@ -4,6 +4,8 @@ import subprocess
 from pathlib import Path
 from typing import TypedDict
 
+from arc.exceptions import GitError
+
 
 class DiffStat(TypedDict):
     files_changed: list[str]
@@ -21,7 +23,10 @@ def _run(
         import sys as _sys
 
         print(f"  git {' '.join(str(a) for a in args[1:])}", file=_sys.stderr)
-    return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=check)
+    try:
+        return subprocess.run(args, cwd=cwd, capture_output=True, text=True, check=check)
+    except subprocess.CalledProcessError as e:
+        raise GitError(e.stderr.strip() or f"git {args[1]} exited {e.returncode}") from e
 
 
 def find_repo_root(start: Path | None = None) -> Path:

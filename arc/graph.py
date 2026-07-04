@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from arc.state import StackState
+
 
 @dataclass
 class StackAnalysis:
@@ -11,7 +13,7 @@ class StackAnalysis:
     in_merge_queue: list[str]
 
 
-def analyze_stack(data: dict, statuses: dict[str, dict]) -> StackAnalysis:
+def analyze_stack(data: StackState, statuses: dict[str, dict]) -> StackAnalysis:
     branches = [b["name"] for b in data["branches"]]
     safe_to_land: list[str] = []
     blocked: dict[str, str] = {}

@@ -4,6 +4,7 @@ import json
 import subprocess
 
 from arc.const import CI_ERROR, CI_FAILURE, CI_SUCCESS, PR_MERGED, REVIEW_APPROVED
+from arc.exceptions import GitHubError
 
 _VERBOSE = False  # module-level flag set by cli
 
@@ -13,7 +14,10 @@ def _run(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
         import sys as _sys
 
         print(f"  gh {' '.join(str(a) for a in args[1:])}", file=_sys.stderr)
-    return subprocess.run(args, capture_output=True, text=True, check=check)
+    try:
+        return subprocess.run(args, capture_output=True, text=True, check=check)
+    except subprocess.CalledProcessError as e:
+        raise GitHubError(e.stderr.strip() or f"gh {args[1]} exited {e.returncode}") from e
 
 
 def is_installed() -> bool:

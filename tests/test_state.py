@@ -2,19 +2,21 @@ import json
 
 import pytest
 
+from arc import git as arc_git
 from arc import state
+from arc.exceptions import NotInitializedError, StateVersionError
 
 
 def test_find_repo_root_finds_git(tmp_path):
     (tmp_path / ".git").mkdir()
     subdir = tmp_path / "src" / "deep"
     subdir.mkdir(parents=True)
-    assert state.find_repo_root(subdir) == tmp_path
+    assert arc_git.find_repo_root(subdir) == tmp_path
 
 
 def test_find_repo_root_raises_outside_repo(tmp_path):
     with pytest.raises(RuntimeError, match="Not in a git repository"):
-        state.find_repo_root(tmp_path)
+        arc_git.find_repo_root(tmp_path)
 
 
 def test_init_state_defaults():
@@ -39,7 +41,7 @@ def test_save_and_load_roundtrip(repo_root):
 
 
 def test_load_raises_when_missing(repo_root):
-    with pytest.raises(FileNotFoundError, match="arc init"):
+    with pytest.raises(NotInitializedError, match="arc init"):
         state.load(repo_root)
 
 
@@ -47,7 +49,7 @@ def test_load_rejects_unknown_version(repo_root):
     path = repo_root / ".arc" / "state.json"
     path.parent.mkdir(exist_ok=True)
     path.write_text(json.dumps({"version": 999, "base": "main", "branches": [], "metadata": {}}))
-    with pytest.raises(ValueError, match="Unknown state version"):
+    with pytest.raises(StateVersionError, match="Unknown state version"):
         state.load(repo_root)
 
 

@@ -13,6 +13,7 @@ import click
 from arc import git, ops
 from arc.commands import _shared
 from arc.commands._shared import err, out
+from arc.state import StackState
 
 # ── Public TypedDicts (JSON API shapes) ──────────────────────────────────────
 
@@ -174,7 +175,7 @@ def _do_amend(
 def _restack_upstack(
     branches: list[str],
     original_shas: dict[str, str],
-    data: dict,
+    data: StackState,
     root: Path,
     quiet: bool = False,
     output_json: bool = False,
@@ -539,7 +540,7 @@ def _do_abort(root: Path, state: _EditState, *, output_json: bool, quiet: bool) 
 
 def _do_continue(
     root: Path,
-    data: dict,
+    data: StackState,
     state: _EditState,
     *,
     no_push: bool,
