@@ -112,3 +112,28 @@ def test_load_config_reads_file(repo_root):
     path.parent.mkdir(exist_ok=True)
     path.write_text(json.dumps(cfg))
     assert state.load_config(repo_root) == cfg
+
+
+def test_init_state_shape_matches_stack_state():
+    s = state.init_state("main")
+    assert s["version"] == 1
+    assert s["base"] == "main"
+    assert s["prefix"] is None
+    assert isinstance(s["branches"], list)
+    assert isinstance(s["metadata"], dict)
+
+
+def test_add_branch_entry_shape():
+    s = state.init_state("main")
+    s2 = state.add_branch(s, "feat/foo")
+    entry = s2["branches"][0]
+    assert entry["name"] == "feat/foo"
+    assert entry["pr_number"] is None
+    assert entry["revision"] == 0
+
+
+def test_update_branch_typed():
+    s = state.init_state("main")
+    s = state.add_branch(s, "feat/bar")
+    s = state.update_branch(s, "feat/bar", pr_number=99)
+    assert s["branches"][0]["pr_number"] == 99
