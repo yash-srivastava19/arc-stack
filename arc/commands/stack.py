@@ -8,7 +8,7 @@ import sys
 import click
 from rich.tree import Tree
 
-from arc import git, github, ops
+from arc import git, github, ops, tip
 from arc import graph as _graph
 from arc import state as st
 from arc.commands import _shared
@@ -105,6 +105,9 @@ def new_cmd(branch, quiet):
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root)
     name = st.apply_prefix(data, branch)
+    if name == tip.TIP_BRANCH:
+        err.print(f"{tip.TIP_BRANCH!r} is reserved for 'arc tip'.")
+        sys.exit(1)
     data = st.add_branch(data, name)
     git.create_branch(name, "HEAD")
     st.save(root, data)
@@ -123,6 +126,9 @@ def add_cmd(branch, quiet):
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root)
     name = st.apply_prefix(data, branch)
+    if name == tip.TIP_BRANCH:
+        err.print(f"{tip.TIP_BRANCH!r} is reserved for 'arc tip'.")
+        sys.exit(1)
     if not git.branch_exists(name):
         err.print(f"Branch {name!r} does not exist locally.")
         err.print(f"hint: git checkout -b {name}", style="dim")

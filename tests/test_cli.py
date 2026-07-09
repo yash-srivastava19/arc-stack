@@ -240,6 +240,27 @@ def test_add_fails_if_already_in_stack(tmp_path):
     assert result.exit_code == 1
 
 
+def test_new_rejects_reserved_tip_name(tmp_path):
+    _write_state(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path):
+        result = runner.invoke(cli, ["new", "arc-tip"])
+    assert result.exit_code == 1
+    assert "reserved" in result.output.lower()
+
+
+def test_add_rejects_reserved_tip_name(tmp_path):
+    _write_state(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.branch_exists", return_value=True),
+    ):
+        result = runner.invoke(cli, ["add", "arc-tip"])
+    assert result.exit_code == 1
+    assert "reserved" in result.output.lower()
+
+
 # ---------------------------------------------------------------------------
 # Task 9: arc status
 # ---------------------------------------------------------------------------
