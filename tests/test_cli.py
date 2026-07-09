@@ -211,6 +211,7 @@ def test_add_adopts_existing_branch(tmp_path):
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.branch_exists", return_value=True),
+        patch("arc.commands.stack.tip.sync_tip_branch"),
     ):
         result = runner.invoke(cli, ["add", "feat/auth"])
     assert result.exit_code == 0
@@ -926,6 +927,7 @@ def test_sync_uses_fork_point_rebase(tmp_path):
             "arc.git.rebase",
             side_effect=lambda _: plain_rebase_calls.append(True) or MagicMock(returncode=0),
         ),
+        patch("arc.commands.sync.tip.sync_tip_branch"),
     ):
         result = runner.invoke(cli, ["sync"])
     assert result.exit_code == 0, result.output
@@ -954,6 +956,7 @@ def test_sync_refresh_index_called_before_rebase(tmp_path):
             "arc.git.rebase_fork_point",
             side_effect=lambda _: call_order.append("rebase") or MagicMock(returncode=0),
         ),
+        patch("arc.commands.sync.tip.sync_tip_branch"),
     ):
         result = runner.invoke(cli, ["sync"])
     assert result.exit_code == 0, result.output
@@ -1527,6 +1530,7 @@ def test_doctor_fails_when_gh_not_authenticated(monkeypatch):
 def test_restack_rebases_branch_onto_parent(arc_root, monkeypatch):
     from arc import git as _git
     from arc import github as _gh
+    from arc import tip as _tip
     from arc.state import save as _save
 
     monkeypatch.chdir(arc_root)
@@ -1542,6 +1546,7 @@ def test_restack_rebases_branch_onto_parent(arc_root, monkeypatch):
     monkeypatch.setattr(_git, "checkout", lambda b: None)
     monkeypatch.setattr(_git, "current_branch", lambda: "feat/b")
     monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
+    monkeypatch.setattr(_tip, "sync_tip_branch", lambda data: None)
     _save(
         arc_root,
         {
@@ -1623,6 +1628,7 @@ def test_sync_warns_on_predicted_conflicts(arc_root, monkeypatch):
 def test_sync_detects_squash_merged_branch(arc_root, monkeypatch):
     from arc import conflicts as _c
     from arc import git as _git
+    from arc import tip as _tip
     from arc.state import load as _load
     from arc.state import save as _save
 
@@ -1654,6 +1660,7 @@ def test_sync_detects_squash_merged_branch(arc_root, monkeypatch):
     monkeypatch.setattr(_c, "predict_conflicts", lambda d, r: [])
     monkeypatch.setattr(_git, "get_sha", lambda ref: "abc")
     monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
+    monkeypatch.setattr(_tip, "sync_tip_branch", lambda data: None)
     from click.testing import CliRunner
 
     from arc.cli import cli
@@ -2131,3 +2138,108 @@ def test_cli_command_inventory_unchanged():
     assert set(cli.commands.keys()) == expected
     assert set(cli.commands["config"].commands.keys()) == {"get", "set", "list"}
     assert set(cli.commands["stack"].commands.keys()) == {"analyze", "snapshot"}
+
+
+def test_new_calls_sync_tip_branch(tmp_path):
+    _write_state(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.create_branch"),
+        patch("arc.commands.stack.tip.sync_tip_branch") as mock_sync,
+    ):
+        result = runner.invoke(cli, ["new", "feat/x"])
+    assert result.exit_code == 0
+    mock_sync.assert_called_once()
+
+
+def test_add_calls_sync_tip_branch(tmp_path):
+    _write_state(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.branch_exists", return_value=True),
+        patch("arc.commands.stack.tip.sync_tip_branch") as mock_sync,
+    ):
+        result = runner.invoke(cli, ["add", "feat/x"])
+    assert result.exit_code == 0
+    mock_sync.assert_called_once()
+
+
+def test_drop_calls_sync_tip_branch(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.commands.stack.tip.sync_tip_branch") as mock_sync,
+    ):
+        result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
+    assert result.exit_code == 0
+    mock_sync.assert_called_once()
+
+
+def test_sync_calls_sync_tip_branch(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.fetch"),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
+        patch("arc.github.get_pr", return_value=None),
+        patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
+    ):
+        result = runner.invoke(cli, ["sync"])
+    assert result.exit_code == 0
+    mock_sync.assert_called_once()
+
+
+def test_rebase_calls_sync_tip_branch(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
+    ):
+        result = runner.invoke(cli, ["rebase"])
+    assert result.exit_code == 0
+    mock_sync.assert_called_once()
+
+
+def test_restack_calls_sync_tip_branch(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.checkout"),
+        patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
+    ):
+        result = runner.invoke(cli, ["restack", "feat/api"])
+    assert result.exit_code == 0
+    mock_sync.assert_called_once()
+
+
+def test_land_calls_sync_tip_branch(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value="squash123"),
+        patch("arc.git.get_sha", return_value="old_sha"),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase_onto", return_value=MagicMock(returncode=0)),
+        patch("arc.git.delete_branch"),
+        patch("arc.git.is_ancestor", return_value=False),
+        patch("arc.commands.submit.tip.sync_tip_branch") as mock_sync,
+    ):
+        result = runner.invoke(cli, ["land", "feat/auth", "-f"])
+    assert result.exit_code == 0
+    mock_sync.assert_called_once()

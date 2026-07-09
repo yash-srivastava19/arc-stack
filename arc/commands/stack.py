@@ -111,6 +111,7 @@ def new_cmd(branch, quiet):
     data = st.add_branch(data, name)
     git.create_branch(name, "HEAD")
     st.save(root, data)
+    tip.sync_tip_branch(data)
     if not quiet:
         err.print(f"Branch {name} created.")
         err.print(
@@ -139,6 +140,7 @@ def add_cmd(branch, quiet):
         sys.exit(1)
     data = st.add_branch(data, name)
     st.save(root, data)
+    tip.sync_tip_branch(data)
     if not quiet:
         err.print(f"Branch {name} added to stack.")
 
@@ -316,6 +318,7 @@ def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
                 sys.exit(3)
         data = st.remove_branch(data, name)
         st.save(root, data)
+        tip.sync_tip_branch(data)
         if not quiet:
             err.print(f"{name} removed from stack.")
 
