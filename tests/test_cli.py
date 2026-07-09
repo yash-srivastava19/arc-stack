@@ -1205,6 +1205,31 @@ def test_bottom_jumps_to_first(tmp_path):
     mock_co.assert_called_once_with("feat/auth")
 
 
+def test_tip_creates_and_checks_out_arc_tip(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.get_sha", return_value="abc12345"),
+        patch("arc.git.force_update_branch") as mock_force,
+        patch("arc.git.checkout") as mock_co,
+    ):
+        result = runner.invoke(cli, ["tip"])
+    assert result.exit_code == 0
+    mock_force.assert_called_once_with("arc-tip", "abc12345")
+    mock_co.assert_called_once_with("arc-tip")
+    assert "arc-tip" in result.output
+
+
+def test_tip_empty_stack(tmp_path):
+    _write_state(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path):
+        result = runner.invoke(cli, ["tip"])
+    assert result.exit_code == 0
+    assert "empty" in result.output.lower()
+
+
 # ---------------------------------------------------------------------------
 # Task 3: arc report
 # ---------------------------------------------------------------------------

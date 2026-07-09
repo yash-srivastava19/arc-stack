@@ -24,7 +24,7 @@ from arc.commands.diagnostics import (
     setup,
     upgrade_cmd,
 )
-from arc.commands.nav import bottom_cmd, checkout_cmd, down_cmd, top_cmd, up_cmd
+from arc.commands.nav import bottom_cmd, checkout_cmd, down_cmd, tip_cmd, top_cmd, up_cmd
 from arc.commands.stack import (
     add_cmd,
     amend_cmd,
@@ -55,6 +55,7 @@ ALL_COMMANDS: list[click.Command] = [
     down_cmd,
     top_cmd,
     bottom_cmd,
+    tip_cmd,
     config_group,
     schema_cmd,
     init_cmd,
