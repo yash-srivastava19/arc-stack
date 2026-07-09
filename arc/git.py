@@ -95,6 +95,15 @@ def fetch(remote: str = "origin") -> None:
     _run(["git", "fetch", remote])
 
 
+def remote_ahead_count(base: str, remote: str = "origin") -> int:
+    """Commits origin/<base> is ahead of local <base>. 0 if the remote-tracking ref
+    is missing or local is already up to date — never raises."""
+    result = _run(["git", "rev-list", "--count", f"{base}..{remote}/{base}"], check=False)
+    if result.returncode != 0:
+        return 0
+    return int(result.stdout.strip() or 0)
+
+
 def rebase(onto: str) -> subprocess.CompletedProcess:
     return _run(["git", "rebase", onto], check=False)
 

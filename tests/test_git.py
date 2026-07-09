@@ -92,6 +92,24 @@ def test_force_update_branch():
     m.assert_called_once_with(["git", "branch", "-f", "arc-tip", "abc123"])
 
 
+def test_remote_ahead_count_positive():
+    with patch("arc.git._run", return_value=mock_result("3\n")) as m:
+        assert git.remote_ahead_count("main") == 3
+    m.assert_called_once_with(
+        ["git", "rev-list", "--count", "main..origin/main"], check=False
+    )
+
+
+def test_remote_ahead_count_zero_when_up_to_date():
+    with patch("arc.git._run", return_value=mock_result("0\n")):
+        assert git.remote_ahead_count("main") == 0
+
+
+def test_remote_ahead_count_zero_when_no_remote_ref():
+    with patch("arc.git._run", return_value=mock_result(returncode=1)):
+        assert git.remote_ahead_count("main") == 0
+
+
 def test_find_repo_root(tmp_path):
     (tmp_path / ".git").mkdir()
     subdir = tmp_path / "deep"
