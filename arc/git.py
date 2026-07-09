@@ -137,6 +137,11 @@ def delete_branch(name: str, force: bool = False) -> None:
     _run(["git", "branch", flag, name], check=False)
 
 
+def force_update_branch(name: str, sha: str) -> None:
+    """Create or move local branch `name` to point at `sha`, without checking it out."""
+    _run(["git", "branch", "-f", name, sha])
+
+
 def get_commit_subject(ref: str = "HEAD") -> str:
     return _run(["git", "log", "-1", "--format=%s", ref]).stdout.strip()
 

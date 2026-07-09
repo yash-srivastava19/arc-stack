@@ -86,6 +86,12 @@ def test_conflicted_files_empty():
         assert git.conflicted_files() == []
 
 
+def test_force_update_branch():
+    with patch("arc.git._run", return_value=mock_result()) as m:
+        git.force_update_branch("arc-tip", "abc123")
+    m.assert_called_once_with(["git", "branch", "-f", "arc-tip", "abc123"])
+
+
 def test_find_repo_root(tmp_path):
     (tmp_path / ".git").mkdir()
     subdir = tmp_path / "deep"
