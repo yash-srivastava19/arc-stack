@@ -151,6 +151,13 @@ def force_update_branch(name: str, sha: str) -> None:
     _run(["git", "branch", "-f", name, sha])
 
 
+def checkout_branch_at(name: str, sha: str) -> None:
+    """Check out branch `name` at `sha`, creating it if missing or resetting it if it
+    already exists — including if it's the currently checked-out branch (`git checkout -B`
+    handles this safely; `git branch -f` does not)."""
+    _run(["git", "checkout", "-B", name, sha])
+
+
 def get_commit_subject(ref: str = "HEAD") -> str:
     return _run(["git", "log", "-1", "--format=%s", ref]).stdout.strip()
 

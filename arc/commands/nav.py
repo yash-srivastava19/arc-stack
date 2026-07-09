@@ -84,8 +84,7 @@ def tip_cmd():
         return
     top = names[-1]
     sha = git.get_sha(top)
-    git.force_update_branch(tip.TIP_BRANCH, sha)
-    git.checkout(tip.TIP_BRANCH)
+    git.checkout_branch_at(tip.TIP_BRANCH, sha)
     err.print(f"{tip.TIP_BRANCH} → {top} ({sha[:8]})")
 
 

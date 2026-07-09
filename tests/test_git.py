@@ -92,6 +92,12 @@ def test_force_update_branch():
     m.assert_called_once_with(["git", "branch", "-f", "arc-tip", "abc123"])
 
 
+def test_checkout_branch_at():
+    with patch("arc.git._run", return_value=mock_result()) as m:
+        git.checkout_branch_at("arc-tip", "abc123")
+    m.assert_called_once_with(["git", "checkout", "-B", "arc-tip", "abc123"])
+
+
 def test_remote_ahead_count_positive():
     with patch("arc.git._run", return_value=mock_result("3\n")) as m:
         assert git.remote_ahead_count("main") == 3
@@ -287,5 +293,33 @@ def test_reset_branch_to_other_branch(git_repo):
         git.reset_branch_to("main", old_sha)
         subprocess.run(["git", "checkout", "main"], cwd=git_repo, check=True, capture_output=True)
         assert git.get_sha("HEAD") == old_sha
+    finally:
+        os.chdir(orig)
+
+
+@pytest.mark.git
+def test_checkout_branch_at_works_when_already_on_that_branch(git_repo):
+    import os
+
+    orig = os.getcwd()
+    try:
+        os.chdir(git_repo)
+        first_sha = git.get_sha("main")
+        git.checkout_branch_at("arc-tip", first_sha)
+        assert git.current_branch() == "arc-tip"
+
+        # Make a new commit on main so there's a different SHA to move to.
+        (git_repo / "new.txt").write_text("x")
+        import subprocess
+
+        subprocess.run(["git", "add", "."], check=True, capture_output=True)
+        subprocess.run(["git", "commit", "-m", "second"], check=True, capture_output=True)
+        second_sha = git.get_sha("main")
+
+        # This is the exact call that crashed before the fix: force-moving
+        # arc-tip while it's the currently checked-out branch.
+        git.checkout_branch_at("arc-tip", second_sha)
+        assert git.current_branch() == "arc-tip"
+        assert git.get_sha("arc-tip") == second_sha
     finally:
         os.chdir(orig)

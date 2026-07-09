@@ -43,3 +43,14 @@ def test_sync_tip_branch_noop_when_stack_empty():
     ):
         tip.sync_tip_branch(data)
     mock_force.assert_not_called()
+
+
+def test_sync_tip_branch_noop_when_on_tip_branch():
+    data = _state([{"name": "feat/a", "pr_number": None, "revision": 0}])
+    with (
+        patch("arc.tip.git.branch_exists", return_value=True),
+        patch("arc.tip.git.current_branch", return_value=tip.TIP_BRANCH),
+        patch("arc.tip.git.force_update_branch") as mock_force,
+    ):
+        tip.sync_tip_branch(data)
+    mock_force.assert_not_called()
