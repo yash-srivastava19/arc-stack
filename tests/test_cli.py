@@ -347,6 +347,59 @@ def test_status_shows_hint_when_needs_rebase(tmp_path):
     assert "arc sync" in result.output
 
 
+def test_status_hints_sync_when_remote_ahead(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.commit_count", return_value=2),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.git.remote_ahead_count", return_value=2),
+        patch("arc.github.get_pr", return_value=None),
+        patch("arc.commands._shared._is_tty", return_value=True),
+    ):
+        result = runner.invoke(cli, ["status"])
+    assert result.exit_code == 0
+    assert "arc sync" in result.output
+    assert "ahead by 2" in result.output
+
+
+def test_status_hints_rebase_when_only_local_drift(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.commit_count", return_value=2),
+        patch("arc.git.is_ancestor", return_value=False),
+        patch("arc.git.remote_ahead_count", return_value=0),
+        patch("arc.github.get_pr", return_value=None),
+        patch("arc.commands._shared._is_tty", return_value=True),
+    ):
+        result = runner.invoke(cli, ["status"])
+    assert result.exit_code == 0
+    assert "arc rebase" in result.output
+
+
+def test_status_no_sync_rebase_hint_when_clean(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.commit_count", return_value=2),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.git.remote_ahead_count", return_value=0),
+        patch("arc.github.get_pr", return_value=None),
+        patch("arc.commands._shared._is_tty", return_value=True),
+    ):
+        result = runner.invoke(cli, ["status"])
+    assert result.exit_code == 0
+    assert "arc sync" not in result.output
+    assert "arc rebase" not in result.output
+
+
 # ---------------------------------------------------------------------------
 # Task 10: arc sync
 # ---------------------------------------------------------------------------

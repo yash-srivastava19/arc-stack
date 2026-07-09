@@ -211,6 +211,18 @@ def status_cmd(output_json, plain, quiet):
                 err.print(
                     f"⚠  {name} — PR base is stale. Run arc sync to retarget.", style="yellow"
                 )
+        remote_ahead = git.remote_ahead_count(data["base"])
+        if remote_ahead > 0:
+            err.print(
+                f"⚠  origin/{data['base']} is ahead by {remote_ahead} commit(s) — "
+                "run 'arc sync' to fetch and rebase",
+                style="yellow",
+            )
+        elif any(needs_rebase_flags.values()):
+            err.print(
+                "→ stack has drifted from its own branches — run 'arc rebase' to restack",
+                style="dim",
+            )
     if not quiet:
         merged = [b["name"] for b in status.get("branches", []) if b.get("is_merged")]
         if merged:
