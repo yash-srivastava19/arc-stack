@@ -2123,6 +2123,7 @@ def test_cli_command_inventory_unchanged():
         "down",
         "top",
         "bottom",
+        "tip",
         "stack",
         "report",
         "dashboard",
