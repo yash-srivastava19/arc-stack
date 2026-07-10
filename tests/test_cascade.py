@@ -101,12 +101,40 @@ def test_load_state_raises_on_corrupt_json(tmp_path):
 
 
 def test_continue_cascade_no_state_is_error():
-    result = cascade.continue_cascade("/tmp/root")
+    with patch("arc.cascade.git.is_mid_rebase", return_value=False):
+        result = cascade.continue_cascade("/tmp/root")
     assert result == {
         "ok": False,
         "state": "error",
         "branch": "",
         "message": "No paused rebase to continue.",
+        "exit_code": 3,
+    }
+
+
+def test_continue_cascade_falls_back_to_bare_rebase_when_no_cascade_state(tmp_path):
+    with (
+        patch("arc.cascade.git.is_mid_rebase", return_value=True),
+        patch("arc.cascade.git.rebase_continue", return_value=mock_result(0)),
+    ):
+        result = cascade.continue_cascade(tmp_path)
+    assert result == {"ok": True, "state": "done", "command": "rebase"}
+
+
+def test_continue_cascade_bare_fallback_still_conflicted(tmp_path):
+    with (
+        patch("arc.cascade.git.is_mid_rebase", return_value=True),
+        patch("arc.cascade.git.rebase_continue", return_value=mock_result(1)),
+        patch("arc.cascade.git.current_branch", return_value="feat/x"),
+        patch("arc.cascade.git.conflicted_files", return_value=["a.py"]),
+    ):
+        result = cascade.continue_cascade(tmp_path)
+    assert result == {
+        "ok": False,
+        "state": "paused",
+        "command": "rebase",
+        "conflict_branch": "feat/x",
+        "conflicted_files": ["a.py"],
         "exit_code": 3,
     }
 
@@ -207,8 +235,20 @@ def test_continue_cascade_still_conflicted_reports_paused(tmp_path):
     assert saved["completed"] == []
 
 
-def test_abort_cascade_no_state_returns_none():
-    assert cascade.abort_cascade("/tmp/root") is None
+def test_abort_cascade_no_state_and_no_rebase_reports_nothing_aborted():
+    with patch("arc.cascade.git.is_mid_rebase", return_value=False):
+        result = cascade.abort_cascade("/tmp/root")
+    assert result == {"aborted": False, "state": None}
+
+
+def test_abort_cascade_falls_back_to_bare_git_abort_when_no_cascade_state(tmp_path):
+    with (
+        patch("arc.cascade.git.is_mid_rebase", return_value=True),
+        patch("arc.cascade.git.rebase_abort") as mock_abort,
+    ):
+        result = cascade.abort_cascade(tmp_path)
+    assert result == {"aborted": True, "state": None}
+    mock_abort.assert_called_once()
 
 
 def test_abort_cascade_rolls_back_every_branch_and_clears_state(tmp_path):
@@ -230,7 +270,7 @@ def test_abort_cascade_rolls_back_every_branch_and_clears_state(tmp_path):
     ):
         result = cascade.abort_cascade(tmp_path)
 
-    assert result == state
+    assert result == {"aborted": True, "state": state}
     assert not state_path.exists()
     mock_abort.assert_called_once()
     mock_checkout.assert_any_call("feat/a")

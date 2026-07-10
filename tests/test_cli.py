@@ -1225,10 +1225,31 @@ def test_rebase_exits_3_on_conflict_and_saves_state(tmp_path):
 def test_rebase_continue_no_paused_state(tmp_path):
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
-    with patch("arc.git.find_repo_root", return_value=tmp_path):
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=False),
+    ):
         result = runner.invoke(cli, ["rebase", "--continue"])
     assert result.exit_code == 3
     assert "no paused rebase" in result.output.lower()
+
+
+def test_rebase_continue_completes_a_bare_restack_rebase(tmp_path):
+    """arc restack leaves a bare (non-cascade) rebase paused on conflict;
+    arc rebase --continue must still be able to finish it (regression test —
+    this used to be a dead end after cascade.py redefined --continue to be
+    cascade-state-driven)."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.rebase_continue", return_value=MagicMock(returncode=0)),
+        patch("arc.commands.sync.tip.sync_tip_branch"),
+    ):
+        result = runner.invoke(cli, ["rebase", "--continue"])
+    assert result.exit_code == 0
+    assert "Rebase complete" in result.output
 
 
 def test_rebase_continue_resumes_and_finishes(tmp_path):
@@ -1293,7 +1314,10 @@ def test_rebase_continue_sync_initiated_prunes_merged_branches(tmp_path):
 def test_rebase_abort_no_paused_state(tmp_path):
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
-    with patch("arc.git.find_repo_root", return_value=tmp_path):
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=False),
+    ):
         result = runner.invoke(cli, ["rebase", "--abort"])
     assert result.exit_code == 0
     assert "no paused rebase" in result.output.lower()
