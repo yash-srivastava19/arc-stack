@@ -1151,6 +1151,7 @@ def test_rebase_entire_stack(tmp_path):
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/auth"),
         patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fp),
     ):
         result = runner.invoke(cli, ["rebase"])
@@ -1173,11 +1174,33 @@ def test_rebase_upstack(tmp_path):
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/auth"),
         patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fp),
     ):
         result = runner.invoke(cli, ["rebase", "--upstack"])
     assert result.exit_code == 0
     assert "main" in rebase_calls
+
+
+def test_rebase_exits_3_on_conflict_and_saves_state(tmp_path):
+    _write_state_with_branches(tmp_path)
+    conflict_result = MagicMock(returncode=1)
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
+        patch("arc.git.rebase_fork_point", return_value=conflict_result),
+        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.conflicted_files", return_value=["api.py"]),
+    ):
+        result = runner.invoke(cli, ["rebase"])
+    assert result.exit_code == 3
+    assert "Conflict in" in result.output
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    assert state_path.exists()
 
 
 def test_rebase_continue(tmp_path):
@@ -2259,6 +2282,7 @@ def test_rebase_calls_sync_tip_branch(tmp_path):
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/auth"),
         patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
         patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
     ):
