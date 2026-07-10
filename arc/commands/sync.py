@@ -6,9 +6,8 @@ import sys
 
 import click
 
-from arc import cascade
+from arc import cascade, git, github, ops, tip
 from arc import conflicts as _conflicts
-from arc import git, github, ops, tip
 from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err
