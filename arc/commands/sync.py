@@ -73,16 +73,6 @@ def _scan_squash_merged(
     return squash_merged, data
 
 
-def _rollback_shas(pre_shas: dict) -> None:
-    """Best-effort reset of all branches to their pre-rebase SHAs."""
-    for name, sha in pre_shas.items():
-        try:
-            git.checkout(name)
-            git._run(["git", "reset", "--hard", sha])
-        except Exception:
-            pass
-
-
 def _prune_merged_branches(data: StackState, root, quiet: bool) -> StackState:
     """Retarget PRs above merged branches, prune from state, save, and return updated data."""
     merged_branches = detect_merged_branches(data)
@@ -169,9 +159,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                     f"Could not start rebase: {result['message']}",
                     style="red",
                 )
-                err.print(
-                    "hint: run `git status` to inspect, then retry `arc sync`", style="dim"
-                )
+                err.print("hint: run `git status` to inspect, then retry `arc sync`", style="dim")
                 _shared._maybe_print_error_hint(root)
                 sys.exit(3)
 
