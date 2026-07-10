@@ -6,6 +6,7 @@ import sys
 
 import click
 
+from arc import cascade
 from arc import conflicts as _conflicts
 from arc import git, github, ops, tip
 from arc import state as st
@@ -149,37 +150,29 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                 err.print("   Proceeding with sync — resolve conflicts if they occur.", style="dim")
 
         plan = ops.rebase_plan(data)
-        pre_shas = {} if dry_run else {b["name"]: git.get_sha(b["name"]) for b in data["branches"]}
 
-        for step in plan:
-            branch, onto = step["branch"], step["onto"]
-            if dry_run:
-                err.print(f"\\[dry-run] rebase {branch} onto {onto}")
-                continue
-            if not quiet:
-                err.print(f"Rebasing {branch} onto {onto}...")
-            git.checkout(branch)
-            result = git.rebase_fork_point(onto)
-            if result.returncode != 0:
-                if not git.is_mid_rebase(root):
-                    # Rebase never started — pre-condition failure (unstaged changes,
-                    # locked index, etc.) not a real merge conflict.
-                    _rollback_shas(pre_shas)
-                    err.print(
-                        f"Could not start rebase of {branch}: {result.stderr.strip() or 'see git status'}",
-                        style="red",
-                    )
-                    err.print(
-                        "hint: run `git status` to inspect, then retry `arc sync`", style="dim"
-                    )
-                    _shared._maybe_print_error_hint(root)
-                    sys.exit(3)
-                # Real merge conflict — abort and roll back all rebases in this run
-                git.rebase_abort()
-                _rollback_shas(pre_shas)
-                files = git.conflicted_files()
-                err.print(f"Conflict in {branch}. Resolve: {', '.join(files) or 'see git status'}")
+        if dry_run:
+            for step in plan:
+                err.print(f"\\[dry-run] rebase {step['branch']} onto {step['onto']}")
+        else:
+            result = cascade.run_cascade(plan, root, command="sync", quiet=quiet)
+            if result["state"] == "paused":
+                files = result["conflicted_files"]
+                err.print(
+                    f"Conflict in {result['conflict_branch']}. "
+                    f"Resolve: {', '.join(files) or 'see git status'}"
+                )
                 err.print("Then run 'arc rebase --continue' or 'arc rebase --abort'.")
+                _shared._maybe_print_error_hint(root)
+                sys.exit(3)
+            if result["state"] == "error":
+                err.print(
+                    f"Could not start rebase: {result['message']}",
+                    style="red",
+                )
+                err.print(
+                    "hint: run `git status` to inspect, then retry `arc sync`", style="dim"
+                )
                 _shared._maybe_print_error_hint(root)
                 sys.exit(3)
 
