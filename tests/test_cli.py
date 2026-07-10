@@ -1235,12 +1235,13 @@ def test_rebase_continue_resumes_and_finishes(tmp_path):
         patch("arc.git.rebase_continue", return_value=MagicMock(returncode=0)),
         patch("arc.git.checkout"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
-        patch("arc.commands.sync.tip.sync_tip_branch"),
+        patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
     ):
         result = runner.invoke(cli, ["rebase", "--continue"])
     assert result.exit_code == 0
     assert "Rebase complete" in result.output
     assert not state_path.exists()
+    mock_sync.assert_called_once()
 
 
 def test_rebase_continue_sync_initiated_prunes_merged_branches(tmp_path):
@@ -1262,11 +1263,12 @@ def test_rebase_continue_sync_initiated_prunes_merged_branches(tmp_path):
         patch("arc.git.is_mid_rebase", return_value=True),
         patch("arc.git.rebase_continue", return_value=MagicMock(returncode=0)),
         patch("arc.github.pr_is_merged", return_value=False),
-        patch("arc.commands.sync.tip.sync_tip_branch"),
+        patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
     ):
         result = runner.invoke(cli, ["rebase", "--continue"])
     assert result.exit_code == 0
     assert "Stack synced" in result.output
+    mock_sync.assert_called_once()
 
 
 def test_rebase_abort_no_paused_state(tmp_path):
@@ -1297,13 +1299,18 @@ def test_rebase_abort_restores_all_branches(tmp_path):
     runner = CliRunner()
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
-        patch("arc.git.rebase_abort"),
-        patch("arc.git.checkout"),
-        patch("arc.git._run"),
+        patch("arc.git.rebase_abort") as mock_abort,
+        patch("arc.git.checkout") as mock_checkout,
+        patch("arc.git._run") as mock_run,
     ):
         result = runner.invoke(cli, ["rebase", "--abort"])
     assert result.exit_code == 0
     assert not state_path.exists()
+    mock_abort.assert_called_once()
+    mock_checkout.assert_any_call("feat/auth")
+    mock_checkout.assert_any_call("feat/api")
+    mock_run.assert_any_call(["git", "reset", "--hard", "s1"])
+    mock_run.assert_any_call(["git", "reset", "--hard", "s2"])
 
 
 # ---------------------------------------------------------------------------
