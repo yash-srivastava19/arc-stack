@@ -455,13 +455,17 @@ def test_sync_exits_3_on_conflict(tmp_path):
         patch("arc.git.fetch"),
         patch("arc.git.rebase_fork_point", return_value=conflict_result),
         patch("arc.git.checkout"),
-        patch("arc.git.rebase_abort"),
+        patch("arc.git.is_mid_rebase", return_value=True),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.conflicted_files", return_value=["src/auth.py"]),
         patch("arc.github.get_pr", return_value=None),
     ):
         result = runner.invoke(cli, ["sync"])
     assert result.exit_code == 3
+    assert "Conflict in" in result.output
+    assert "arc rebase --continue" in result.output
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    assert state_path.exists()
 
 
 # ---------------------------------------------------------------------------
