@@ -1203,23 +1203,107 @@ def test_rebase_exits_3_on_conflict_and_saves_state(tmp_path):
     assert state_path.exists()
 
 
-def test_rebase_continue(tmp_path):
+def test_rebase_continue_no_paused_state(tmp_path):
     _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path):
+        result = runner.invoke(cli, ["rebase", "--continue"])
+    assert result.exit_code == 3
+    assert "no paused rebase" in result.output.lower()
+
+
+def test_rebase_continue_resumes_and_finishes(tmp_path):
+    _write_state_with_branches(tmp_path)
+    state = {
+        "command": "rebase",
+        "plan": [
+            {"branch": "feat/auth", "onto": "main"},
+            {"branch": "feat/api", "onto": "feat/auth"},
+        ],
+        "completed": [],
+        "pre_shas": {"feat/auth": "s1", "feat/api": "s2"},
+        "started_at": "2026-01-01T00:00:00+00:00",
+    }
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(_json.dumps(state))
+
     runner = CliRunner()
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=True),
         patch("arc.git.rebase_continue", return_value=MagicMock(returncode=0)),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.commands.sync.tip.sync_tip_branch"),
     ):
         result = runner.invoke(cli, ["rebase", "--continue"])
     assert result.exit_code == 0
+    assert "Rebase complete" in result.output
+    assert not state_path.exists()
 
 
-def test_rebase_abort(tmp_path):
+def test_rebase_continue_sync_initiated_prunes_merged_branches(tmp_path):
+    _write_state_with_branches(tmp_path)
+    state = {
+        "command": "sync",
+        "plan": [{"branch": "feat/auth", "onto": "main"}],
+        "completed": [],
+        "pre_shas": {"feat/auth": "s1"},
+        "started_at": "2026-01-01T00:00:00+00:00",
+    }
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(_json.dumps(state))
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.rebase_continue", return_value=MagicMock(returncode=0)),
+        patch("arc.github.pr_is_merged", return_value=False),
+        patch("arc.commands.sync.tip.sync_tip_branch"),
+    ):
+        result = runner.invoke(cli, ["rebase", "--continue"])
+    assert result.exit_code == 0
+    assert "Stack synced" in result.output
+
+
+def test_rebase_abort_no_paused_state(tmp_path):
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
-    with patch("arc.git.find_repo_root", return_value=tmp_path), patch("arc.git.rebase_abort"):
+    with patch("arc.git.find_repo_root", return_value=tmp_path):
         result = runner.invoke(cli, ["rebase", "--abort"])
     assert result.exit_code == 0
+    assert "no paused rebase" in result.output.lower()
+
+
+def test_rebase_abort_restores_all_branches(tmp_path):
+    _write_state_with_branches(tmp_path)
+    state = {
+        "command": "rebase",
+        "plan": [
+            {"branch": "feat/auth", "onto": "main"},
+            {"branch": "feat/api", "onto": "feat/auth"},
+        ],
+        "completed": ["feat/auth"],
+        "pre_shas": {"feat/auth": "s1", "feat/api": "s2"},
+        "started_at": "2026-01-01T00:00:00+00:00",
+    }
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(_json.dumps(state))
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.rebase_abort"),
+        patch("arc.git.checkout"),
+        patch("arc.git._run"),
+    ):
+        result = runner.invoke(cli, ["rebase", "--abort"])
+    assert result.exit_code == 0
+    assert not state_path.exists()
 
 
 # ---------------------------------------------------------------------------
