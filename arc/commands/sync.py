@@ -329,7 +329,9 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
             _shared._maybe_print_error_hint(root)
             sys.exit(3)
         if result["state"] == "error":
-            err.print(f"Could not start rebase of {result['branch']}: {result['message']}", style="red")
+            err.print(
+                f"Could not start rebase of {result['branch']}: {result['message']}", style="red"
+            )
             _shared._maybe_print_error_hint(root)
             sys.exit(3)
 
