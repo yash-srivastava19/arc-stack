@@ -289,16 +289,32 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
     data = _shared._load_state_or_exit(root)
 
     if do_continue:
-        result = git.rebase_continue()
-        if result.returncode != 0:
-            err.print("Rebase still has conflicts. Resolve and run 'arc rebase --continue' again.")
+        result = cascade.continue_cascade(root, quiet=quiet)
+        if result["state"] == "paused":
+            err.print(
+                f"Rebase still has conflicts in {result['conflict_branch']}. "
+                "Resolve and run 'arc rebase --continue' again."
+            )
             sys.exit(3)
-        err.print("Rebase continued.")
+        if result["state"] == "error":
+            err.print(result["message"])
+            sys.exit(3)
+        if result["command"] == "sync":
+            data = _prune_merged_branches(data, root, quiet)
+            if not quiet:
+                err.print("Stack synced. Run 'arc push' to push to remote.")
+        else:
+            if not quiet:
+                err.print("Rebase complete.")
+        tip.sync_tip_branch(data)
         return
 
     if do_abort:
-        git.rebase_abort()
-        err.print("Rebase aborted.")
+        state = cascade.abort_cascade(root)
+        if state is None:
+            err.print("No paused rebase to abort.")
+        else:
+            err.print("Rebase aborted; stack restored to its pre-cascade state.")
         return
 
     current = git.current_branch()
