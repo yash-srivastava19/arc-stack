@@ -47,6 +47,7 @@ class CascadePaused(TypedDict):
 class CascadeError(TypedDict):
     ok: Literal[False]
     state: Literal["error"]
+    branch: str
     message: str
     exit_code: Literal[3]
 
@@ -119,6 +120,7 @@ def _run_from(
                 return {
                     "ok": False,
                     "state": "error",
+                    "branch": branch,
                     "message": result.stderr.strip() or "see git status",
                     "exit_code": 3,
                 }
@@ -172,6 +174,7 @@ def continue_cascade(root: Path, quiet: bool = False) -> CascadeResult:
         return {
             "ok": False,
             "state": "error",
+            "branch": "",
             "message": "No paused rebase to continue.",
             "exit_code": 3,
         }
