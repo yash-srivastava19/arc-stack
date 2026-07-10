@@ -2267,6 +2267,7 @@ def test_restack_calls_sync_tip_branch(tmp_path):
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
     with (
+        patch("arc.commands._shared._check_setup", return_value=True),
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
         patch("arc.git.checkout"),
