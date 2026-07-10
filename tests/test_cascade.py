@@ -87,6 +87,18 @@ def test_run_cascade_precondition_failure_rolls_back_no_state(tmp_path):
     mock_run.assert_any_call(["git", "reset", "--hard", "sha0"])
 
 
+def test_load_state_raises_on_corrupt_json(tmp_path):
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    state_path.parent.mkdir(parents=True)
+    state_path.write_text("{not valid json")
+
+    try:
+        cascade.load_state(tmp_path)
+        assert False, "expected RuntimeError"
+    except RuntimeError as exc:
+        assert "arc rebase --abort" in str(exc)
+
+
 def test_continue_cascade_no_state_is_error():
     result = cascade.continue_cascade("/tmp/root")
     assert result == {
