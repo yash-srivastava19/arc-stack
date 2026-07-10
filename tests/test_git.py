@@ -101,9 +101,7 @@ def test_checkout_branch_at():
 def test_remote_ahead_count_positive():
     with patch("arc.git._run", return_value=mock_result("3\n")) as m:
         assert git.remote_ahead_count("main") == 3
-    m.assert_called_once_with(
-        ["git", "rev-list", "--count", "main..origin/main"], check=False
-    )
+    m.assert_called_once_with(["git", "rev-list", "--count", "main..origin/main"], check=False)
 
 
 def test_remote_ahead_count_zero_when_up_to_date():
