@@ -54,6 +54,12 @@ class CascadeError(TypedDict):
 
 CascadeResult = CascadeDone | CascadePaused | CascadeError
 
+
+class AbortResult(TypedDict):
+    aborted: bool
+    state: CascadeState | None
+
+
 _STATE_FILENAME = "rebase-in-progress.json"
 
 
@@ -171,6 +177,22 @@ def continue_cascade(root: Path, quiet: bool = False) -> CascadeResult:
     """Resume a paused cascade after the user resolves conflicts."""
     state = load_state(root)
     if state is None:
+        if git.is_mid_rebase(root):
+            # A bare (non-cascade) rebase is in progress — from `arc restack`,
+            # `arc drop`, or `arc land`, none of which write cascade state.
+            # Fall back to a plain continue so `arc rebase --continue` still
+            # works as a generic recovery command for any paused rebase.
+            result = git.rebase_continue()
+            if result.returncode != 0:
+                return {
+                    "ok": False,
+                    "state": "paused",
+                    "command": "rebase",
+                    "conflict_branch": git.current_branch(),
+                    "conflicted_files": git.conflicted_files(),
+                    "exit_code": 3,
+                }
+            return {"ok": True, "state": "done", "command": "rebase"}
         return {
             "ok": False,
             "state": "error",
@@ -205,14 +227,23 @@ def continue_cascade(root: Path, quiet: bool = False) -> CascadeResult:
     return _run_from(remaining, root, command, plan, pre_shas, completed, quiet)
 
 
-def abort_cascade(root: Path) -> CascadeState | None:
+def abort_cascade(root: Path) -> AbortResult:
     """Abort the in-progress git rebase (if any) and roll every plan branch
-    back to its pre-cascade SHA. Returns the aborted state (for messaging),
-    or None if there was nothing to abort."""
+    back to its pre-cascade SHA.
+
+    Returns {"aborted": True, "state": <state>} for a cascade abort,
+    {"aborted": True, "state": None} for a bare (non-cascade) rebase abort
+    — e.g. from `arc restack`/`arc drop`/`arc land`, none of which write
+    cascade state — and {"aborted": False, "state": None} if there was
+    nothing to abort at all.
+    """
     state = load_state(root)
     if state is None:
-        return None
+        if git.is_mid_rebase(root):
+            git.rebase_abort()
+            return {"aborted": True, "state": None}
+        return {"aborted": False, "state": None}
     git.rebase_abort()
     _rollback(state["pre_shas"])
     _clear_state(root)
-    return state
+    return {"aborted": True, "state": state}
