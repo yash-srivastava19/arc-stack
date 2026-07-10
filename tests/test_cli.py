@@ -709,6 +709,25 @@ def test_status_no_warning_without_edit_state(tmp_path):
     assert "arc edit --continue" not in result.output
 
 
+def test_status_warns_on_paused_cascade(tmp_path, monkeypatch):
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
+    _write_state_with_branches(tmp_path)
+    (tmp_path / ".arc" / "rebase-in-progress.json").write_text("{}")
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.commit_count", return_value=2),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.git.remote_ahead_count", return_value=0),
+        patch("arc.github.get_pr", return_value=None),
+    ):
+        result = runner.invoke(cli, ["status"])
+    assert result.exit_code == 0
+    assert "rebase" in result.output.lower()
+    assert "arc rebase --continue" in result.output
+
+
 def test_submit_runs_hooks_and_fails(tmp_path):
     _write_state_no_prs(tmp_path)
     cfg = {"hooks": {"pre-submit": ["exit 1"]}}
@@ -1689,6 +1708,43 @@ def test_doctor_fails_when_gh_not_authenticated(monkeypatch):
     result = CliRunner().invoke(cli, ["doctor"])
     assert result.exit_code == 1
     assert "gh auth login" in result.output
+
+
+def test_doctor_warns_on_paused_cascade_mid_rebase(tmp_path):
+    (tmp_path / ".arc").mkdir()
+    (tmp_path / ".arc" / "state.json").write_text(
+        _json.dumps({"version": 1, "base": "main", "prefix": None, "branches": [], "metadata": {}})
+    )
+    (tmp_path / ".arc" / "rebase-in-progress.json").write_text("{}")
+    runner = CliRunner()
+    with (
+        patch("arc.git.is_installed", return_value=True),
+        patch("arc.github.is_installed", return_value=True),
+        patch("arc.github.is_authenticated", return_value=True),
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=True),
+    ):
+        result = runner.invoke(cli, ["doctor"])
+    assert "paused mid-cascade" in result.output.lower()
+
+
+def test_doctor_warns_on_stale_cascade_state(tmp_path):
+    (tmp_path / ".arc").mkdir()
+    (tmp_path / ".arc" / "state.json").write_text(
+        _json.dumps({"version": 1, "base": "main", "prefix": None, "branches": [], "metadata": {}})
+    )
+    (tmp_path / ".arc" / "rebase-in-progress.json").write_text("{}")
+    runner = CliRunner(env={"COLUMNS": "200"})
+    with (
+        patch("arc.git.is_installed", return_value=True),
+        patch("arc.github.is_installed", return_value=True),
+        patch("arc.github.is_authenticated", return_value=True),
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=False),
+    ):
+        result = runner.invoke(cli, ["doctor"])
+    assert "stale" in result.output.lower()
+    assert "arc rebase --abort" in result.output
 
 
 # ---------------------------------------------------------------------------
