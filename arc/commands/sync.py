@@ -156,7 +156,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                 sys.exit(3)
             if result["state"] == "error":
                 err.print(
-                    f"Could not start rebase: {result['message']}",
+                    f"Could not start rebase of {result['branch']}: {result['message']}",
                     style="red",
                 )
                 err.print("hint: run `git status` to inspect, then retry `arc sync`", style="dim")

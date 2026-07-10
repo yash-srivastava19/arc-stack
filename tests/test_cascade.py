@@ -78,6 +78,7 @@ def test_run_cascade_precondition_failure_rolls_back_no_state(tmp_path):
     assert result == {
         "ok": False,
         "state": "error",
+        "branch": "feat/a",
         "message": "dirty tree",
         "exit_code": 3,
     }
@@ -104,6 +105,7 @@ def test_continue_cascade_no_state_is_error():
     assert result == {
         "ok": False,
         "state": "error",
+        "branch": "",
         "message": "No paused rebase to continue.",
         "exit_code": 3,
     }
