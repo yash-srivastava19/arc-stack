@@ -17,6 +17,7 @@ One command keeps the whole stack current. Another opens all the PRs — with a 
 
 **What arc handles for you:**
 - Cascade rebases — one `arc sync` propagates a change from the bottom branch to the top
+- Resumable conflict recovery — a mid-cascade conflict pauses in place; `arc rebase --continue` picks up where it left off instead of starting over
 - PR creation and updates — `arc submit` opens all PRs with correct bases and injects a stack map into each description
 - Squash-merge recovery — detects squash-merged branches and restacks automatically
 - Conflict prediction — warns before rebasing when adjacent branches touch the same files
@@ -84,12 +85,14 @@ When `main` moves or you amend a lower branch, run:
 arc sync
 ```
 
-This fetches the latest from remote and cascades a rebase bottom-up through the stack — `feat/auth` onto `main`, `feat/api` onto `feat/auth`, `feat/ui` onto `feat/api`. If there's a conflict, `arc` aborts the rebase, resets every branch to where it was before, and tells you exactly which files to fix:
+This fetches the latest from remote and cascades a rebase bottom-up through the stack — `feat/auth` onto `main`, `feat/api` onto `feat/auth`, `feat/ui` onto `feat/api`. If there's a conflict, `arc` pauses the rebase right there and tells you exactly which files to fix:
 
 ```
 Conflict in feat/api. Resolve: src/api.py
 Then run 'arc rebase --continue' or 'arc rebase --abort'.
 ```
+
+Resolve the conflict and run `arc rebase --continue` — it finishes `feat/api` and keeps cascading through the rest of the stack (`feat/ui`, and so on), not just the one branch. `arc rebase --abort` rolls every branch back to exactly where it was before the sync started, including any branches that had already rebased cleanly earlier in the same run.
 
 When the stack is clean, push everything and open PRs:
 
@@ -267,6 +270,7 @@ All commands accept `-q` (`--quiet`) to suppress hints and `-n` (`--dry-run`) wh
 | `arc checkout <name\|index>` | Switch to branch by name or position |
 | `arc up [n]` / `arc down [n]` | Move through the stack |
 | `arc top` / `arc bottom` | Jump to ends of the stack |
+| `arc tip` | Create/update a local `arc-tip` branch pointing at the stack's top and check it out |
 | `arc stack analyze [--json]` | Show critical path, safe-to-land branches, and blockers |
 | `arc doctor` | Check environment: git, gh, auth, stack validity |
 
