@@ -14,11 +14,7 @@ from typing import Literal, TypedDict
 
 from arc import git
 from arc.commands._shared import err
-
-
-class RebasePlanStep(TypedDict):
-    branch: str
-    onto: str
+from arc.ops import RebasePlanStep
 
 
 class CascadeState(TypedDict):

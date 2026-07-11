@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path as _Path
+from typing import TypedDict
 
 from rich.console import Console as _Console
 
@@ -8,6 +9,11 @@ from arc import git as _git
 from arc import github as _github
 from arc import state as st
 from arc.state import StackState
+
+
+class RebasePlanStep(TypedDict):
+    branch: str
+    onto: str
 
 
 def parent_branch(data: StackState, name: str) -> str:
@@ -32,9 +38,9 @@ def downstack_branches(data: StackState, name: str) -> list[str]:
     return names[: names.index(name) + 1]
 
 
-def rebase_plan(data: StackState, merged: set[str] | None = None) -> list[dict]:
+def rebase_plan(data: StackState, merged: set[str] | None = None) -> list[RebasePlanStep]:
     merged = merged or set()
-    plan = []
+    plan: list[RebasePlanStep] = []
     prev = data["base"]
     for b in data["branches"]:
         name = b["name"]
