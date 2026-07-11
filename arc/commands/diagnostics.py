@@ -117,6 +117,19 @@ def doctor_cmd() -> None:
                     style="yellow",
                 )
 
+        cascade_state_path = root / ".arc" / "rebase-in-progress.json"
+        if cascade_state_path.exists():
+            if git.is_mid_rebase(root):
+                err.print(
+                    "⚠  a rebase is paused mid-cascade — run 'arc rebase --continue' or 'arc rebase --abort'",
+                    style="yellow",
+                )
+            else:
+                err.print(
+                    "⚠  stale rebase-in-progress.json found (no active rebase) — run 'arc rebase --abort' to clean up",
+                    style="yellow",
+                )
+
         hooks_dir = root / ".arc" / "hooks"
         if hooks_dir.is_dir():
             from arc.hooks import EVENTS

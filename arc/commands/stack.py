@@ -179,6 +179,14 @@ def status_cmd(output_json, plain, quiet):
             style="yellow",
         )
 
+    cascade_state_path = root / ".arc" / "rebase-in-progress.json"
+    if cascade_state_path.exists() and not quiet:
+        err.print(
+            "⚠  a rebase is paused mid-cascade — run 'arc rebase --continue' "
+            "or 'arc rebase --abort' to resume",
+            style="yellow",
+        )
+
     current = git.current_branch()
     names = st.branch_names(data)
 

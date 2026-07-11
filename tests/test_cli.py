@@ -455,13 +455,17 @@ def test_sync_exits_3_on_conflict(tmp_path):
         patch("arc.git.fetch"),
         patch("arc.git.rebase_fork_point", return_value=conflict_result),
         patch("arc.git.checkout"),
-        patch("arc.git.rebase_abort"),
+        patch("arc.git.is_mid_rebase", return_value=True),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.conflicted_files", return_value=["src/auth.py"]),
         patch("arc.github.get_pr", return_value=None),
     ):
         result = runner.invoke(cli, ["sync"])
     assert result.exit_code == 3
+    assert "Conflict in" in result.output
+    assert "arc rebase --continue" in result.output
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    assert state_path.exists()
 
 
 # ---------------------------------------------------------------------------
@@ -703,6 +707,25 @@ def test_status_no_warning_without_edit_state(tmp_path):
         result = runner.invoke(cli, ["status"])
     assert "edit-in-progress" not in result.output
     assert "arc edit --continue" not in result.output
+
+
+def test_status_warns_on_paused_cascade(tmp_path, monkeypatch):
+    monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
+    _write_state_with_branches(tmp_path)
+    (tmp_path / ".arc" / "rebase-in-progress.json").write_text("{}")
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.commit_count", return_value=2),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.git.remote_ahead_count", return_value=0),
+        patch("arc.github.get_pr", return_value=None),
+    ):
+        result = runner.invoke(cli, ["status"])
+    assert result.exit_code == 0
+    assert "rebase" in result.output.lower()
+    assert "arc rebase --continue" in result.output
 
 
 def test_submit_runs_hooks_and_fails(tmp_path):
@@ -1147,6 +1170,7 @@ def test_rebase_entire_stack(tmp_path):
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/auth"),
         patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fp),
     ):
         result = runner.invoke(cli, ["rebase"])
@@ -1169,6 +1193,7 @@ def test_rebase_upstack(tmp_path):
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/auth"),
         patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fp),
     ):
         result = runner.invoke(cli, ["rebase", "--upstack"])
@@ -1176,23 +1201,159 @@ def test_rebase_upstack(tmp_path):
     assert "main" in rebase_calls
 
 
-def test_rebase_continue(tmp_path):
+def test_rebase_exits_3_on_conflict_and_saves_state(tmp_path):
+    _write_state_with_branches(tmp_path)
+    conflict_result = MagicMock(returncode=1)
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
+        patch("arc.git.rebase_fork_point", return_value=conflict_result),
+        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.conflicted_files", return_value=["api.py"]),
+    ):
+        result = runner.invoke(cli, ["rebase"])
+    assert result.exit_code == 3
+    assert "Conflict in" in result.output
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    assert state_path.exists()
+
+
+def test_rebase_continue_no_paused_state(tmp_path):
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=False),
+    ):
+        result = runner.invoke(cli, ["rebase", "--continue"])
+    assert result.exit_code == 3
+    assert "no paused rebase" in result.output.lower()
+
+
+def test_rebase_continue_completes_a_bare_restack_rebase(tmp_path):
+    """arc restack leaves a bare (non-cascade) rebase paused on conflict;
+    arc rebase --continue must still be able to finish it (regression test —
+    this used to be a dead end after cascade.py redefined --continue to be
+    cascade-state-driven)."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=True),
         patch("arc.git.rebase_continue", return_value=MagicMock(returncode=0)),
+        patch("arc.commands.sync.tip.sync_tip_branch"),
     ):
         result = runner.invoke(cli, ["rebase", "--continue"])
     assert result.exit_code == 0
+    assert "Rebase complete" in result.output
 
 
-def test_rebase_abort(tmp_path):
+def test_rebase_continue_resumes_and_finishes(tmp_path):
+    _write_state_with_branches(tmp_path)
+    state = {
+        "command": "rebase",
+        "plan": [
+            {"branch": "feat/auth", "onto": "main"},
+            {"branch": "feat/api", "onto": "feat/auth"},
+        ],
+        "completed": [],
+        "pre_shas": {"feat/auth": "s1", "feat/api": "s2"},
+        "started_at": "2026-01-01T00:00:00+00:00",
+    }
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(_json.dumps(state))
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.rebase_continue", return_value=MagicMock(returncode=0)),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
+    ):
+        result = runner.invoke(cli, ["rebase", "--continue"])
+    assert result.exit_code == 0
+    assert "Rebase complete" in result.output
+    assert not state_path.exists()
+    mock_sync.assert_called_once()
+
+
+def test_rebase_continue_sync_initiated_prunes_merged_branches(tmp_path):
+    _write_state_with_branches(tmp_path)
+    state = {
+        "command": "sync",
+        "plan": [{"branch": "feat/auth", "onto": "main"}],
+        "completed": [],
+        "pre_shas": {"feat/auth": "s1"},
+        "started_at": "2026-01-01T00:00:00+00:00",
+    }
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(_json.dumps(state))
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.rebase_continue", return_value=MagicMock(returncode=0)),
+        patch("arc.github.pr_is_merged", return_value=False),
+        patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
+    ):
+        result = runner.invoke(cli, ["rebase", "--continue"])
+    assert result.exit_code == 0
+    assert "Stack synced" in result.output
+    mock_sync.assert_called_once()
+
+
+def test_rebase_abort_no_paused_state(tmp_path):
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
-    with patch("arc.git.find_repo_root", return_value=tmp_path), patch("arc.git.rebase_abort"):
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=False),
+    ):
         result = runner.invoke(cli, ["rebase", "--abort"])
     assert result.exit_code == 0
+    assert "no paused rebase" in result.output.lower()
+
+
+def test_rebase_abort_restores_all_branches(tmp_path):
+    _write_state_with_branches(tmp_path)
+    state = {
+        "command": "rebase",
+        "plan": [
+            {"branch": "feat/auth", "onto": "main"},
+            {"branch": "feat/api", "onto": "feat/auth"},
+        ],
+        "completed": ["feat/auth"],
+        "pre_shas": {"feat/auth": "s1", "feat/api": "s2"},
+        "started_at": "2026-01-01T00:00:00+00:00",
+    }
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(_json.dumps(state))
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.rebase_abort") as mock_abort,
+        patch("arc.git.checkout") as mock_checkout,
+        patch("arc.git._run") as mock_run,
+    ):
+        result = runner.invoke(cli, ["rebase", "--abort"])
+    assert result.exit_code == 0
+    assert not state_path.exists()
+    mock_abort.assert_called_once()
+    mock_checkout.assert_any_call("feat/auth")
+    mock_checkout.assert_any_call("feat/api")
+    mock_run.assert_any_call(["git", "reset", "--hard", "s1"])
+    mock_run.assert_any_call(["git", "reset", "--hard", "s2"])
 
 
 # ---------------------------------------------------------------------------
@@ -1571,6 +1732,43 @@ def test_doctor_fails_when_gh_not_authenticated(monkeypatch):
     result = CliRunner().invoke(cli, ["doctor"])
     assert result.exit_code == 1
     assert "gh auth login" in result.output
+
+
+def test_doctor_warns_on_paused_cascade_mid_rebase(tmp_path):
+    (tmp_path / ".arc").mkdir()
+    (tmp_path / ".arc" / "state.json").write_text(
+        _json.dumps({"version": 1, "base": "main", "prefix": None, "branches": [], "metadata": {}})
+    )
+    (tmp_path / ".arc" / "rebase-in-progress.json").write_text("{}")
+    runner = CliRunner()
+    with (
+        patch("arc.git.is_installed", return_value=True),
+        patch("arc.github.is_installed", return_value=True),
+        patch("arc.github.is_authenticated", return_value=True),
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=True),
+    ):
+        result = runner.invoke(cli, ["doctor"])
+    assert "paused mid-cascade" in result.output.lower()
+
+
+def test_doctor_warns_on_stale_cascade_state(tmp_path):
+    (tmp_path / ".arc").mkdir()
+    (tmp_path / ".arc" / "state.json").write_text(
+        _json.dumps({"version": 1, "base": "main", "prefix": None, "branches": [], "metadata": {}})
+    )
+    (tmp_path / ".arc" / "rebase-in-progress.json").write_text("{}")
+    runner = CliRunner(env={"COLUMNS": "200"})
+    with (
+        patch("arc.git.is_installed", return_value=True),
+        patch("arc.github.is_installed", return_value=True),
+        patch("arc.github.is_authenticated", return_value=True),
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=False),
+    ):
+        result = runner.invoke(cli, ["doctor"])
+    assert "stale" in result.output.lower()
+    assert "arc rebase --abort" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -2255,6 +2453,7 @@ def test_rebase_calls_sync_tip_branch(tmp_path):
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/auth"),
         patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
         patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
     ):
