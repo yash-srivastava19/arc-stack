@@ -8,6 +8,11 @@ from arc.exceptions import GitHubError
 
 _VERBOSE = False  # module-level flag set by cli
 
+# arc's own repo, for `arc report` bug/feedback issues. Always explicit via
+# --repo: gh otherwise infers the target repo from the cwd's git remote,
+# which is whatever repo the user is running arc in, not arc's own repo.
+ARC_REPO = "yash-srivastava19/arc-stack"
+
 
 def _run(args: list[str], check: bool = True) -> subprocess.CompletedProcess:
     if _VERBOSE:
@@ -144,7 +149,10 @@ def get_pr_status(pr_number: int) -> dict:
 
 def create_issue(title: str, body: str) -> dict | None:
     try:
-        result = _run(["gh", "issue", "create", "--title", title, "--body", body], check=False)
+        result = _run(
+            ["gh", "issue", "create", "--repo", ARC_REPO, "--title", title, "--body", body],
+            check=False,
+        )
     except Exception:
         return None
     if result.returncode != 0:

@@ -140,6 +140,21 @@ def test_create_issue_calls_gh_api():
         assert "<OWNER>" in result["html_url"]  # Matches mock output
 
 
+def test_create_issue_targets_arc_repo_not_cwd_repo():
+    """create_issue must always target arc's own repo, regardless of which
+    repo the user is currently running `arc` in (--repo must be explicit,
+    otherwise gh infers the repo from the cwd's git remote)."""
+    with patch("arc.github._run") as mock_run:
+        mock_run.return_value = MagicMock(
+            returncode=0, stdout="https://github.com/owner/repo/issues/42\n"
+        )
+        github.create_issue(title="Bug Report", body="Description here")
+
+        args = mock_run.call_args[0][0]
+        assert "--repo" in args
+        assert args[args.index("--repo") + 1] == github.ARC_REPO
+
+
 def test_create_issue_returns_none_on_failure():
     """Test that create_issue returns None on API error."""
     with patch("arc.github._run") as mock_run:
