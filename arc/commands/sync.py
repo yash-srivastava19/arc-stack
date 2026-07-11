@@ -310,10 +310,10 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
         return
 
     if do_abort:
-        result = cascade.abort_cascade(root)
-        if not result["aborted"]:
+        abort_result = cascade.abort_cascade(root)
+        if not abort_result["aborted"]:
             err.print("No paused rebase to abort.")
-        elif result["state"] is not None:
+        elif abort_result["state"] is not None:
             err.print("Rebase aborted; stack restored to its pre-cascade state.")
         else:
             err.print("Rebase aborted.")
