@@ -157,6 +157,7 @@ def test_retarget_dependent_prs_prints_status():
 def test_sync_prunes_merged_branch_from_stack(arc_root, monkeypatch):
     """arc sync removes merged branches from stack state automatically."""
     from arc import git as _git
+    from arc import tip as _tip
     from arc.state import load as _load
     from arc.state import save as _save
 
@@ -194,6 +195,7 @@ def test_sync_prunes_merged_branch_from_stack(arc_root, monkeypatch):
 
     monkeypatch.setattr(_gh, "pr_is_merged", lambda n: n == 25)
     monkeypatch.setattr("arc.commands._shared._is_tty", lambda: True)
+    monkeypatch.setattr(_tip, "sync_tip_branch", lambda data: None)
     from click.testing import CliRunner
 
     from arc.cli import cli

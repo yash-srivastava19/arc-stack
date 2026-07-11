@@ -6,7 +6,7 @@ import sys
 
 import click
 
-from arc import git, ops
+from arc import git, ops, tip
 from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err
@@ -71,6 +71,21 @@ def top_cmd():
         return
     git.checkout(names[-1])
     err.print(f"Switched to {names[-1]}.")
+
+
+@click.command("tip")
+def tip_cmd():
+    """Create or update the local arc-tip branch to point at the stack's top, and check it out."""
+    root = git.find_repo_root()
+    data = _shared._load_state_or_exit(root)
+    names = st.branch_names(data)
+    if not names:
+        err.print("Stack is empty.")
+        return
+    top = names[-1]
+    sha = git.get_sha(top)
+    git.checkout_branch_at(tip.TIP_BRANCH, sha)
+    err.print(f"{tip.TIP_BRANCH} → {top} ({sha[:8]})")
 
 
 @click.command("bottom")

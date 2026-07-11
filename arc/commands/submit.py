@@ -8,7 +8,7 @@ import sys
 
 import click
 
-from arc import git, github, ops
+from arc import git, github, ops, tip
 from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err, out
@@ -324,6 +324,7 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
 
         data = st.remove_branch(data, target)
         st.save(root, data)
+        tip.sync_tip_branch(data)
 
         _maybe_auto_promote(above, data, root, quiet)
 

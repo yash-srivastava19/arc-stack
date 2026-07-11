@@ -172,6 +172,7 @@ def test_sync_post_sync_fires_after_rebase_chain(tmp_path):
         patch("arc.git.get_sha", return_value="abc1234567890"),
         patch("arc.git.checkout"),
         patch("arc.git.rebase_fork_point", return_value=rebase_ok),
+        patch("arc.commands.sync.tip.sync_tip_branch"),
     ):
         result = CliRunner().invoke(cli, ["sync"])
     assert result.exit_code == 0

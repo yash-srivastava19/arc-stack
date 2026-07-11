@@ -7,7 +7,7 @@ import sys
 import click
 
 from arc import conflicts as _conflicts
-from arc import git, github, ops
+from arc import git, github, ops, tip
 from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err
@@ -185,6 +185,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
 
         if not dry_run:
             data = _prune_merged_branches(data, root, quiet)
+            tip.sync_tip_branch(data)
 
         if not dry_run and not quiet:
             err.print("Stack synced. Run 'arc push' to push to remote.")
@@ -289,6 +290,7 @@ def restack_cmd(branch: str | None, dry_run: bool, quiet: bool) -> None:
         err.print(f"Rebase of {target} onto {parent} failed.")
         err.print("hint: resolve conflicts then run arc rebase --continue", style="dim")
         sys.exit(3)
+    tip.sync_tip_branch(data)
     if not quiet:
         err.print(f"✓ {target} rebased onto {parent}.")
         err.print("hint: run arc push to update remote", style="dim")
@@ -349,5 +351,7 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
                 _shared._maybe_print_error_hint(root)
                 sys.exit(3)
 
+        if not dry_run:
+            tip.sync_tip_branch(data)
         if not dry_run and not quiet:
             err.print("Rebase complete.")

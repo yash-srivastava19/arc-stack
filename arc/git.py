@@ -95,6 +95,15 @@ def fetch(remote: str = "origin") -> None:
     _run(["git", "fetch", remote])
 
 
+def remote_ahead_count(base: str, remote: str = "origin") -> int:
+    """Commits origin/<base> is ahead of local <base>. 0 if the remote-tracking ref
+    is missing or local is already up to date — never raises."""
+    result = _run(["git", "rev-list", "--count", f"{base}..{remote}/{base}"], check=False)
+    if result.returncode != 0:
+        return 0
+    return int(result.stdout.strip() or 0)
+
+
 def rebase(onto: str) -> subprocess.CompletedProcess:
     return _run(["git", "rebase", onto], check=False)
 
@@ -135,6 +144,18 @@ def force_push(branches: list[str], remote: str = "origin") -> None:
 def delete_branch(name: str, force: bool = False) -> None:
     flag = "-D" if force else "-d"
     _run(["git", "branch", flag, name], check=False)
+
+
+def force_update_branch(name: str, sha: str) -> None:
+    """Create or move local branch `name` to point at `sha`, without checking it out."""
+    _run(["git", "branch", "-f", name, sha])
+
+
+def checkout_branch_at(name: str, sha: str) -> None:
+    """Check out branch `name` at `sha`, creating it if missing or resetting it if it
+    already exists — including if it's the currently checked-out branch (`git checkout -B`
+    handles this safely; `git branch -f` does not)."""
+    _run(["git", "checkout", "-B", name, sha])
 
 
 def get_commit_subject(ref: str = "HEAD") -> str:
