@@ -3,7 +3,23 @@
 All notable changes to arc are documented here.
 
 ---
+## [0.7.0] — 2026-07-11
 
+### Added
+- `arc tip` — maintains a local `arc-tip` branch that always tracks the stack's top, for local tooling (e.g. E2E test runners) that needs a stable branch name (#82)
+- `arc status` now hints `arc sync` vs `arc rebase` based on whether the remote moved or the stack just drifted locally (#82)
+- `arc status`/`arc doctor` detect a paused or stale rebase cascade (#82)
+- Arc setup auto-installs shell completions (#71) ([21d5553](https://github.com/yash-srivastava19/arc-stack/commit/21d555395b0e5c9d4e861dca6223eaf0c69c42db))
+- Add arc.exceptions typed exception hierarchy (#73) ([48db434](https://github.com/yash-srivastava19/arc-stack/commit/48db4347061fc1125c2be2e3983396933a770a57))
+- Add StackState and BranchEntry TypedDicts to state.py (#78) ([3da163b](https://github.com/yash-srivastava19/arc-stack/commit/3da163b717a2c9776aa7453399e7ffd927a76946))
+
+
+### Fixed
+- Arc report/feedback creates issues in arc's own repo, not cwd's repo (#81) ([9d4f159](https://github.com/yash-srivastava19/arc-stack/commit/9d4f15943702f65e919cba2b4f4022c0e4bfb830))
+- Arc sync/rebase conflict pause and resume (cascade.py) (#84) ([176f86c](https://github.com/yash-srivastava19/arc-stack/commit/176f86c74dce18b4544ff18fdbf87963f02fe630))
+
+
+---
 ## [0.5.1] — 2026-06-14
 
 ### Added
