@@ -26,12 +26,14 @@ State is stored in `.arc/state.json` (gitignored). Configuration lives in `.arc/
 3. **Never run commands that prompt for confirmation without `--force` or `--dry-run`.** `arc land` and `arc drop` prompt interactively when stdin is a tty. In non-interactive contexts, pass `--force` or `--dry-run`.
 4. **Use `--json` for machine-readable output.** `status`, `sync`, `push`, `submit`, `land`, `drop`, and `edit` all support `--json`.
 5. **Use `--dry-run` before destructive operations.** Rebase, land, drop, sync, push, and edit all support `-n`/`--dry-run`.
-6. **Handle exit code 3 (conflict) explicitly.** After a conflict during `arc sync` or `arc rebase`, use `arc rebase --continue`/`--abort`. After a conflict during `arc edit`, use `arc edit --continue`/`--abort`.
+6. **Handle exit code 3 (conflict) explicitly.** After a conflict during `arc sync` or `arc rebase`, use `arc rebase --continue`/`--abort`. `--continue` resumes the whole cascade (not just the one branch that conflicted); `--abort` rolls every branch in the run back to its pre-cascade SHA, not just the one in progress. Both also work as a generic fallback for a bare (non-cascade) rebase left paused by `arc restack`, `arc drop`, or `arc land`. After a conflict during `arc edit`, use `arc edit --continue`/`--abort`.
 7. **`arc submit` creates PRs as draft by default.** Pass `--open` to mark them ready for review.
 8. **Branch order is the stack order.** Index 1 is the branch closest to trunk; the highest index is the tip.
 9. **Run `arc doctor` to diagnose environment issues.** It checks git, gh, authentication, and stack validity in one command.
 10. **`arc edit` saves conflict state to `.arc/edit-in-progress.json`.** If a rebase conflict pauses an edit, the state is persisted — always `arc edit --continue` or `arc edit --abort` before starting a new edit.
 11. **`arc push` skips branches already merged into the base.** It checks locally (git cherry) and via GitHub PR state — you will never accidentally resurrect a merged branch's remote.
+12. **`arc sync`/`arc rebase` save conflict state to `.arc/rebase-in-progress.json`.** A mid-cascade conflict is genuinely paused (not aborted) — always `arc rebase --continue` or `arc rebase --abort` before starting a new sync/rebase. `arc status` and `arc doctor` flag a paused or stale file here the same way they flag `edit-in-progress.json`.
+13. **`arc tip` maintains a local `arc-tip` branch pointing at the stack's top.** It's opt-in — nothing is created until you run `arc tip` once — and after that it's kept in sync automatically by `new`, `add`, `drop`, `sync`, `rebase`, `restack`, and `land`. Useful as a stable branch name for local tooling (e.g. E2E test runners) that needs to always build against the current top of the stack. `arc-tip` is a reserved name and cannot be added to the stack itself.
 
 ---
 
@@ -56,6 +58,7 @@ State is stored in `.arc/state.json` (gitignored). Configuration lives in `.arc/
 | `arc down [N]` | Move N branches toward trunk (default: 1). |
 | `arc top` | Jump to the topmost branch. |
 | `arc bottom` | Jump to the bottommost branch. |
+| `arc tip` | Create/update a local `arc-tip` branch pointing at the stack's top and check it out. |
 | `arc restack [BRANCH] [-n] [-q]` | Restack a single branch onto its stack parent without full sync. |
 | `arc stack analyze [--json]` | Show critical path, safe-to-land branches, and blockers. |
 | `arc edit [BRANCH] [--message TEXT] [--no-push] [-n] [--json] [-q]` | Amend HEAD commit of a branch and auto-restack all upstack branches. |
