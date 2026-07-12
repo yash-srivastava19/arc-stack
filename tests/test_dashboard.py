@@ -2,6 +2,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from arc.dashboard import (
+    THEMES,
     BranchStatus,
     BranchTreeWidget,
     DetailWidget,
@@ -9,6 +10,8 @@ from arc.dashboard import (
     SummaryWidget,
     load_stack_view,
 )
+
+_ARC = THEMES["arc"]  # default theme used in color assertions
 
 
 def make_branch(
@@ -56,15 +59,21 @@ class TestBranchStatus:
 
     def test_status_color_approved(self):
         branch = make_branch(pr_number=1, ci_passing=True, approved=True, draft=False)
-        assert branch.status_color == "#8fb573"
+        assert branch.status_color(_ARC) == _ARC.green
 
     def test_status_color_ci_failing(self):
         branch = make_branch(pr_number=1, ci_passing=False, draft=False)
-        assert branch.status_color == "#e0796f"
+        assert branch.status_color(_ARC) == _ARC.red
 
     def test_status_color_no_pr(self):
         branch = make_branch(pr_number=None)
-        assert branch.status_color == "#5f6b52"
+        assert branch.status_color(_ARC) == _ARC.dim
+
+    def test_status_color_uses_theme(self):
+        branch = make_branch(pr_number=1, ci_passing=True, approved=True, draft=False)
+        dracula = THEMES["dracula"]
+        assert branch.status_color(dracula) == dracula.green
+        assert branch.status_color(dracula) != branch.status_color(_ARC)
 
 
 class TestStackView:

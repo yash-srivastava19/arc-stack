@@ -17,20 +17,141 @@ from arc import git, github
 from arc import state as st
 from arc.exceptions import NotInitializedError
 
-# ── Palette (green-terminal aesthetic) ──────────────────────────────────────
+# ── Theme ─────────────────────────────────────────────────────────────────────
 
-_BG = "#0c0e0b"
-_FG = "#c9d1b8"
-_DIM = "#5f6b52"
-_MUTED = "#7c8a68"
-_BRIGHT = "#e7ecd8"
-_GREEN = "#8fb573"
-_RED = "#e0796f"
-_YELLOW = "#e0a93b"
-_BLUE = "#7aa8d8"
-_BORDER = "#1e211a"
-_SEL_BG = "#14170f"
-_TRACK = "#2a2e26"
+
+@dataclass
+class DashboardTheme:
+    """Color palette for the dashboard.
+
+    Select a theme with:  arc config set dashboard.theme <name>
+    Available names: arc, dracula, nord, gruvbox, catppuccin, tokyo-night
+    """
+
+    name: str
+    bg: str
+    fg: str
+    dim: str
+    muted: str
+    bright: str
+    green: str
+    red: str
+    yellow: str
+    blue: str
+    border: str
+    sel_bg: str
+    track: str
+
+
+THEMES: dict[str, DashboardTheme] = {
+    "arc": DashboardTheme(
+        name="arc",
+        bg="#0c0e0b",
+        fg="#c9d1b8",
+        dim="#5f6b52",
+        muted="#7c8a68",
+        bright="#e7ecd8",
+        green="#8fb573",
+        red="#e0796f",
+        yellow="#e0a93b",
+        blue="#7aa8d8",
+        border="#1e211a",
+        sel_bg="#14170f",
+        track="#2a2e26",
+    ),
+    "dracula": DashboardTheme(
+        name="dracula",
+        bg="#282a36",
+        fg="#f8f8f2",
+        dim="#6272a4",
+        muted="#6272a4",
+        bright="#ffffff",
+        green="#50fa7b",
+        red="#ff5555",
+        yellow="#f1fa8c",
+        blue="#8be9fd",
+        border="#44475a",
+        sel_bg="#44475a",
+        track="#383a4a",
+    ),
+    "nord": DashboardTheme(
+        name="nord",
+        bg="#2e3440",
+        fg="#d8dee9",
+        dim="#4c566a",
+        muted="#616e88",
+        bright="#eceff4",
+        green="#a3be8c",
+        red="#bf616a",
+        yellow="#ebcb8b",
+        blue="#81a1c1",
+        border="#3b4252",
+        sel_bg="#3b4252",
+        track="#434c5e",
+    ),
+    "gruvbox": DashboardTheme(
+        name="gruvbox",
+        bg="#282828",
+        fg="#ebdbb2",
+        dim="#665c54",
+        muted="#7c6f64",
+        bright="#fbf1c7",
+        green="#b8bb26",
+        red="#fb4934",
+        yellow="#fabd2f",
+        blue="#83a598",
+        border="#3c3836",
+        sel_bg="#3c3836",
+        track="#504945",
+    ),
+    "catppuccin": DashboardTheme(
+        name="catppuccin",
+        bg="#1e1e2e",
+        fg="#cdd6f4",
+        dim="#585b70",
+        muted="#6c7086",
+        bright="#ffffff",
+        green="#a6e3a1",
+        red="#f38ba8",
+        yellow="#f9e2af",
+        blue="#89b4fa",
+        border="#313244",
+        sel_bg="#313244",
+        track="#45475a",
+    ),
+    "tokyo-night": DashboardTheme(
+        name="tokyo-night",
+        bg="#1a1b26",
+        fg="#a9b1d6",
+        dim="#414868",
+        muted="#565f89",
+        bright="#c0caf5",
+        green="#9ece6a",
+        red="#f7768e",
+        yellow="#e0af68",
+        blue="#7aa2f7",
+        border="#292e42",
+        sel_bg="#292e42",
+        track="#32344a",
+    ),
+}
+
+DEFAULT_THEME = "arc"
+
+# Active theme — set by DashboardApp.__init__ before compose() fires.
+# All widget render() methods read from _T so they automatically pick up
+# whatever theme was loaded for this session.
+_T: DashboardTheme = THEMES[DEFAULT_THEME]
+
+
+def load_theme(root: Path) -> DashboardTheme:
+    """Load theme from arc config (dashboard.theme), falling back to 'arc'."""
+    try:
+        cfg = st.load_config(root)
+        name = cfg.get("dashboard", {}).get("theme", DEFAULT_THEME)
+        return THEMES.get(name, THEMES[DEFAULT_THEME])
+    except Exception:
+        return THEMES[DEFAULT_THEME]
 
 
 # ── Data model ───────────────────────────────────────────────────────────────
@@ -63,30 +184,29 @@ class BranchStatus:
             return "⚙"
         return "○"
 
-    @property
-    def status_color(self) -> str:
+    def status_color(self, t: DashboardTheme | None = None) -> str:
+        theme = t or _T
         if self.pr_number is None:
-            return _DIM
+            return theme.dim
         if self.ci_passing is False:
-            return _RED
+            return theme.red
         if self.approved:
-            return _GREEN
+            return theme.green
         if self.ci_passing is None:
-            return _YELLOW
-        return _FG
+            return theme.yellow
+        return theme.fg
 
-    @property
-    def row_accent(self) -> str:
-        """Left-border color for the branch row."""
+    def row_accent(self, t: DashboardTheme | None = None) -> str:
+        theme = t or _T
         if self.ci_passing is False:
-            return _RED
+            return theme.red
         if self.approved:
-            return _GREEN
+            return theme.green
         if self.pr_number and self.ci_passing is None:
-            return _YELLOW
+            return theme.yellow
         if self.pr_number:
-            return _BLUE
-        return _BORDER
+            return theme.blue
+        return theme.border
 
 
 @dataclass
@@ -186,9 +306,8 @@ def _apply_pr_status(branch: BranchStatus, pr_status: dict) -> None:
         branch.blocker_reason = None
 
 
-# Keep as an alias used in tests
 def load_stack_view(root: Path) -> StackView:
-    """Load full stack view including GitHub PR status (blocking)."""
+    """Load full stack view including GitHub PR status (blocking). Used in tests."""
     stack = load_local_stack_view(root)
     for branch in stack.branches:
         if branch.pr_number:
@@ -221,9 +340,10 @@ class TitleBarWidget(Static):
         self.refresh()
 
     def render(self) -> str:
+        t = _T
         branch_info = f" · on {self.current_branch}" if self.current_branch else ""
-        left = f"[{_GREEN}]arc[/{_GREEN}] [{_DIM}]— {self.base}{branch_info}[/{_DIM}]"
-        right = f"[{_DIM}]{self._clock}[/{_DIM}]"
+        left = f"[{t.green}]arc[/{t.green}] [{t.dim}]— {self.base}{branch_info}[/{t.dim}]"
+        right = f"[{t.dim}]{self._clock}[/{t.dim}]"
         return f"{left}  {right}"
 
 
@@ -236,28 +356,31 @@ class SummaryWidget(Static):
         self.loading = loading
 
     def render(self) -> str:
+        t = _T
         if self.loading:
-            return f"[{_MUTED}]$ arc status[/{_MUTED}]\n[{_DIM}]loading…[/{_DIM}]"
+            return f"[{t.muted}]$ arc status[/{t.muted}]\n[{t.dim}]loading…[/{t.dim}]"
 
         if self.stack_view.error:
-            return f"[{_MUTED}]$ arc status[/{_MUTED}]\n[{_RED}]{self.stack_view.error}[/{_RED}]"
+            return (
+                f"[{t.muted}]$ arc status[/{t.muted}]\n[{t.red}]{self.stack_view.error}[/{t.red}]"
+            )
 
         n = len(self.stack_view.branches)
         prs = sum(1 for b in self.stack_view.branches if b.pr_number)
         approved = sum(1 for b in self.stack_view.branches if b.approved)
 
         parts = [
-            f"[{_BRIGHT}]{self.stack_view.base}[/{_BRIGHT}]",
-            f"[{_DIM}]{n} branch{'es' if n != 1 else ''}[/{_DIM}]",
+            f"[{t.bright}]{self.stack_view.base}[/{t.bright}]",
+            f"[{t.dim}]{n} branch{'es' if n != 1 else ''}[/{t.dim}]",
         ]
         if prs:
-            parts.append(f"[{_BLUE}]{prs} PR{'s' if prs != 1 else ''}[/{_BLUE}]")
+            parts.append(f"[{t.blue}]{prs} PR{'s' if prs != 1 else ''}[/{t.blue}]")
         if approved:
-            parts.append(f"[{_GREEN}]{approved} approved[/{_GREEN}]")
+            parts.append(f"[{t.green}]{approved} approved[/{t.green}]")
         if not self.stack_view.branches:
-            parts.append(f"[{_DIM}]run arc new <branch> to add branches[/{_DIM}]")
+            parts.append(f"[{t.dim}]run arc new <branch> to add branches[/{t.dim}]")
 
-        header = f"[{_MUTED}]$ arc status[/{_MUTED}]"
+        header = f"[{t.muted}]$ arc status[/{t.muted}]"
         summary = "  ".join(parts)
         return f"{header}\n{summary}"
 
@@ -266,11 +389,13 @@ class ActionsBarWidget(Static):
     """Keyboard shortcuts bar."""
 
     def render(self) -> str:
+        t = _T
+
         def key(k: str, label: str) -> str:
             # Use \[ to escape brackets so Rich doesn't interpret [s] as strikethrough etc.
-            return f"[{_GREEN}]\\[{k}][/{_GREEN}][{_MUTED}] {label}[/{_MUTED}]"
+            return f"[{t.green}]\\[{k}][/{t.green}][{t.muted}] {label}[/{t.muted}]"
 
-        keys = "  ".join(
+        return "  ".join(
             [
                 key("s", "sync"),
                 key("p", "push"),
@@ -281,7 +406,6 @@ class ActionsBarWidget(Static):
                 key("q", "quit"),
             ]
         )
-        return keys
 
 
 class BranchTreeWidget(Static):
@@ -293,67 +417,54 @@ class BranchTreeWidget(Static):
         self.loading = loading
 
     def render(self) -> str:
+        t = _T
         if self.loading:
-            return f"[{_DIM}]loading…[/{_DIM}]"
+            return f"[{t.dim}]loading…[/{t.dim}]"
         if not self.stack_view.branches:
-            return f"[{_DIM}]stack is empty[/{_DIM}]"
+            return f"[{t.dim}]stack is empty[/{t.dim}]"
 
         base = self.stack_view.base
         n = len(self.stack_view.branches)
-        lines = [f"[bold {_DIM}]{base}[/bold {_DIM}]"]
+        lines = [f"[bold {t.dim}]{base}[/bold {t.dim}]"]
 
         for i, branch in enumerate(self.stack_view.branches):
             is_selected = i == self.stack_view.current_index
             is_head = branch.name == self.stack_view.current_git_branch
 
             connector = "└─" if i == n - 1 else "├─"
-            accent = branch.row_accent
+            accent = branch.row_accent(t)
+            sc = branch.status_color(t)
 
-            # left accent bar (simulated with colored pipe)
             bar = f"[{accent}]┃[/{accent}]"
-
-            # cursor
-            cursor = f"[bold {_GREEN}]▶[/bold {_GREEN}] " if is_selected else "  "
-
-            # name
+            cursor = f"[bold {t.green}]▶[/bold {t.green}] " if is_selected else "  "
             name = (
-                f"[bold {_BRIGHT}]{branch.name}[/bold {_BRIGHT}]"
+                f"[bold {t.bright}]{branch.name}[/bold {t.bright}]"
                 if is_head
-                else f"[{_FG}]{branch.name}[/{_FG}]"
+                else f"[{t.fg}]{branch.name}[/{t.fg}]"
             )
-
-            # PR label
-            if branch.pr_number:
-                pr_label = f"[{_BLUE}]#{branch.pr_number}[/{_BLUE}]"
-            else:
-                pr_label = f"[{_DIM}]--[/{_DIM}]"
-
-            # CI icon
-            icon = f"[{branch.status_color}]{branch.status_icon}[/{branch.status_color}]"
-
-            # commits + rev
-            meta = f"[{_DIM}]{branch.commits}c  (rev {branch.revision})[/{_DIM}]"
-
-            # HEAD marker
-            head_marker = f"  [{_BRIGHT}]◀ HEAD[/{_BRIGHT}]" if is_head else ""
-
-            # blocker
+            pr_label = (
+                f"[{t.blue}]#{branch.pr_number}[/{t.blue}]"
+                if branch.pr_number
+                else f"[{t.dim}]--[/{t.dim}]"
+            )
+            icon = f"[{sc}]{branch.status_icon}[/{sc}]"
+            meta = f"[{t.dim}]{branch.commits}c  (rev {branch.revision})[/{t.dim}]"
+            head_marker = f"  [{t.bright}]◀ HEAD[/{t.bright}]" if is_head else ""
             blocker = (
-                f"  [{_YELLOW}]{branch.blocker_reason}[/{_YELLOW}]"
+                f"  [{t.yellow}]{branch.blocker_reason}[/{t.yellow}]"
                 if branch.blocker_reason and is_selected
                 else ""
             )
 
             lines.append(
-                f"{cursor}[{_DIM}]{connector}[/{_DIM}] {bar} {name}  {pr_label}  {icon}  {meta}{head_marker}{blocker}"
+                f"{cursor}[{t.dim}]{connector}[/{t.dim}] {bar} {name}  {pr_label}  {icon}  {meta}{head_marker}{blocker}"
             )
 
-        # warn if current branch is not in the stack
         cgb = self.stack_view.current_git_branch
         if cgb and self.stack_view.index_of(cgb) is None and cgb != base:
             lines.append(
-                f"\n[{_YELLOW}]⚠ current branch [{_BRIGHT}]{cgb}[/{_BRIGHT}] not in stack[/{_YELLOW}]"
-                f"\n[{_DIM}]→ run arc add {cgb}[/{_DIM}]"
+                f"\n[{t.yellow}]⚠ current branch [{t.bright}]{cgb}[/{t.bright}] not in stack[/{t.yellow}]"
+                f"\n[{t.dim}]→ run arc add {cgb}[/{t.dim}]"
             )
 
         return "\n".join(lines)
@@ -367,43 +478,44 @@ class DetailWidget(Static):
         self.stack_view = stack_view
 
     def render(self) -> str:
+        t = _T
         current = self.stack_view.current_branch
         if not current:
             return ""
 
         lines: list[str] = []
-        lines.append(f"[{_MUTED}]$ arc show {current.name}[/{_MUTED}]")
-        lines.append(f"[{_DIM}]branch [/{_DIM}][{_BRIGHT}]{current.name}[/{_BRIGHT}]")
-        lines.append(f"[{_DIM}]base   [/{_DIM}][{_FG}]{current.base}[/{_FG}]")
+        lines.append(f"[{t.muted}]$ arc show {current.name}[/{t.muted}]")
+        lines.append(f"[{t.dim}]branch [/{t.dim}][{t.bright}]{current.name}[/{t.bright}]")
+        lines.append(f"[{t.dim}]base   [/{t.dim}][{t.fg}]{current.base}[/{t.fg}]")
         commit_word = "commit" if current.commits == 1 else "commits"
         lines.append(
-            f"[{_DIM}]commits[/{_DIM}] [{_FG}]{current.commits} {commit_word}[/{_FG}]  [{_DIM}]rev {current.revision}[/{_DIM}]"
+            f"[{t.dim}]commits[/{t.dim}] [{t.fg}]{current.commits} {commit_word}[/{t.fg}]  [{t.dim}]rev {current.revision}[/{t.dim}]"
         )
 
         if current.pr_number:
-            pr_str = f"[{_BLUE}]#{current.pr_number}[/{_BLUE}]"
+            pr_str = f"[{t.blue}]#{current.pr_number}[/{t.blue}]"
             if current.pr_url:
-                pr_str += f"  [{_DIM}]{current.pr_url}[/{_DIM}]"
-            lines.append(f"[{_DIM}]pr     [/{_DIM}]{pr_str}")
+                pr_str += f"  [{t.dim}]{current.pr_url}[/{t.dim}]"
+            lines.append(f"[{t.dim}]pr     [/{t.dim}]{pr_str}")
 
             if current.ci_passing is True:
-                ci_str = f"[{_GREEN}]✓ passing[/{_GREEN}]"
+                ci_str = f"[{t.green}]✓ passing[/{t.green}]"
             elif current.ci_passing is False:
-                ci_str = f"[{_RED}]✗ failing[/{_RED}]"
+                ci_str = f"[{t.red}]✗ failing[/{t.red}]"
             else:
-                ci_str = f"[{_YELLOW}]⚙ running[/{_YELLOW}]"
-            lines.append(f"[{_DIM}]checks [/{_DIM}]{ci_str}")
+                ci_str = f"[{t.yellow}]⚙ running[/{t.yellow}]"
+            lines.append(f"[{t.dim}]checks [/{t.dim}]{ci_str}")
 
             if current.approved:
-                review = f"[{_GREEN}]✓ approved[/{_GREEN}]"
+                review = f"[{t.green}]✓ approved[/{t.green}]"
             elif current.draft:
-                review = f"[{_DIM}]draft[/{_DIM}]"
+                review = f"[{t.dim}]draft[/{t.dim}]"
             else:
-                review = f"[{_YELLOW}]○ awaiting review[/{_YELLOW}]"
-            lines.append(f"[{_DIM}]review [/{_DIM}]{review}")
+                review = f"[{t.yellow}]○ awaiting review[/{t.yellow}]"
+            lines.append(f"[{t.dim}]review [/{t.dim}]{review}")
         else:
             lines.append(
-                f"[{_DIM}]pr     [/{_DIM}][{_DIM}]none — run arc push && arc submit[/{_DIM}]"
+                f"[{t.dim}]pr     [/{t.dim}][{t.dim}]none — run arc push && arc submit[/{t.dim}]"
             )
 
         return "\n".join(lines)
@@ -412,27 +524,25 @@ class DetailWidget(Static):
 # ── App ───────────────────────────────────────────────────────────────────────
 
 
-class DashboardApp(App):
-    """Interactive dashboard for arc stacked PRs."""
-
-    CSS = f"""
+def _build_css(t: DashboardTheme) -> str:
+    return f"""
 Screen {{
-    background: {_BG};
-    color: {_FG};
+    background: {t.bg};
+    color: {t.fg};
 }}
 
 #title_bar {{
     height: 1;
-    background: {_BG};
-    color: {_DIM};
+    background: {t.bg};
+    color: {t.dim};
     padding: 0 1;
-    border-bottom: tall {_BORDER};
+    border-bottom: tall {t.border};
 }}
 
 #scroll_area {{
     height: 1fr;
-    background: {_BG};
-    scrollbar-color: {_TRACK} {_BG};
+    background: {t.bg};
+    scrollbar-color: {t.track} {t.bg};
     scrollbar-size: 1 1;
     padding: 1 2;
 }}
@@ -445,7 +555,7 @@ SummaryWidget {{
 #actions_bar {{
     height: 1;
     margin-bottom: 1;
-    color: {_MUTED};
+    color: {t.muted};
     padding: 0;
 }}
 
@@ -457,7 +567,7 @@ SummaryWidget {{
 #detail {{
     padding: 1;
     margin-bottom: 1;
-    border: tall {_BORDER};
+    border: tall {t.border};
 }}
 
 #detail.hidden {{
@@ -466,25 +576,31 @@ SummaryWidget {{
 
 #cmd_input {{
     height: 3;
-    background: {_BG};
-    border: tall {_BORDER};
-    color: {_BRIGHT};
+    background: {t.bg};
+    border: tall {t.border};
+    color: {t.bright};
     padding: 0 1;
 }}
 
 #cmd_input:focus {{
-    border: tall {_GREEN};
+    border: tall {t.green};
 }}
 
 #output_log {{
     height: 8;
-    background: {_BG};
-    border: tall {_BORDER};
-    scrollbar-color: {_TRACK} {_BG};
+    background: {t.bg};
+    border: tall {t.border};
+    scrollbar-color: {t.track} {t.bg};
     scrollbar-size: 1 1;
     padding: 0 1;
 }}
 """
+
+
+class DashboardApp(App):
+    """Interactive dashboard for arc stacked PRs."""
+
+    CSS = _build_css(THEMES[DEFAULT_THEME])  # overwritten in __init__ with the active theme
 
     BINDINGS = [
         Binding("up,k", "move_up", "Up", show=False),
@@ -501,7 +617,13 @@ SummaryWidget {{
     TITLE = "arc dashboard"
     ENABLE_COMMAND_PALETTE = False
 
-    def __init__(self, root: Path):
+    def __init__(self, root: Path, theme: DashboardTheme | None = None):
+        # Set the module-level active theme BEFORE super().__init__ so all
+        # widget render() calls see the right palette from the start.
+        # Also update the class-level CSS so Textual picks up the theme colors.
+        global _T
+        _T = theme or THEMES[DEFAULT_THEME]
+        DashboardApp.CSS = _build_css(_T)
         super().__init__()
         self.root = root
         self.stack_view: StackView | None = None
@@ -527,7 +649,7 @@ SummaryWidget {{
         self.set_focus(None)
         self._load_state_async()
         self.start_polling()
-        self._emit(f"[{_MUTED}]arc dashboard — use ↑↓ to navigate, enter to expand[/{_MUTED}]")
+        self._emit(f"[{_T.muted}]arc dashboard — use ↑↓ to navigate, enter to expand[/{_T.muted}]")
 
     @work(thread=True, exit_on_error=False, exclusive=True)
     def _load_state_worker(self) -> None:
@@ -624,30 +746,30 @@ SummaryWidget {{
         if self.stack_view and self.stack_view.current_branch:
             self._run_arc("land", self.stack_view.current_branch.name)
         else:
-            self._emit(f"[{_RED}]no branch selected[/{_RED}]")
+            self._emit(f"[{_T.red}]no branch selected[/{_T.red}]")
 
     def action_cmd_restack(self) -> None:
         if self.stack_view and self.stack_view.current_branch:
             self._run_arc("restack", self.stack_view.current_branch.name)
         else:
-            self._emit(f"[{_RED}]no branch selected[/{_RED}]")
+            self._emit(f"[{_T.red}]no branch selected[/{_T.red}]")
 
     def action_open_pr(self) -> None:
         if not self.stack_view or not self.stack_view.current_branch:
-            self._emit(f"[{_YELLOW}]no branch selected[/{_YELLOW}]")
+            self._emit(f"[{_T.yellow}]no branch selected[/{_T.yellow}]")
             return
         current = self.stack_view.current_branch
         if current.pr_url:
             self._open_url_worker(current.pr_url)
-            self._emit(f"[{_MUTED}]opening PR #{current.pr_number}…[/{_MUTED}]")
+            self._emit(f"[{_T.muted}]opening PR #{current.pr_number}…[/{_T.muted}]")
         elif current.pr_number:
             self._open_pr_worker(current.pr_number)
-            self._emit(f"[{_MUTED}]opening PR #{current.pr_number}…[/{_MUTED}]")
+            self._emit(f"[{_T.muted}]opening PR #{current.pr_number}…[/{_T.muted}]")
         else:
-            self._emit(f"[{_YELLOW}]no PR yet — run arc push && arc submit[/{_YELLOW}]")
+            self._emit(f"[{_T.yellow}]no PR yet — run arc push && arc submit[/{_T.yellow}]")
 
     def action_refresh(self) -> None:
-        self._emit(f"[{_MUTED}]refreshing…[/{_MUTED}]")
+        self._emit(f"[{_T.muted}]refreshing…[/{_T.muted}]")
         self._load_state_async()
 
     def on_key(self, event) -> None:  # type: ignore[override]
@@ -669,7 +791,7 @@ SummaryWidget {{
         event.input.clear()
         if not cmd:
             return
-        self._emit(f"[{_MUTED}]arc› {cmd}[/{_MUTED}]")
+        self._emit(f"[{_T.muted}]arc› {cmd}[/{_T.muted}]")
         parts = cmd.split()
         verb = parts[0] if parts else ""
         arg = parts[1] if len(parts) > 1 else ""
@@ -686,7 +808,7 @@ SummaryWidget {{
             if branch:
                 self._run_arc("land", branch)
             else:
-                self._emit(f"[{_YELLOW}]usage: land <branch>[/{_YELLOW}]")
+                self._emit(f"[{_T.yellow}]usage: land <branch>[/{_T.yellow}]")
         elif verb in ("restack", "r"):
             branch = arg or (
                 self.stack_view.current_branch.name
@@ -696,20 +818,20 @@ SummaryWidget {{
             if branch:
                 self._run_arc("restack", branch)
             else:
-                self._emit(f"[{_YELLOW}]usage: restack <branch>[/{_YELLOW}]")
+                self._emit(f"[{_T.yellow}]usage: restack <branch>[/{_T.yellow}]")
         elif verb in ("refresh", "R"):
             self.action_refresh()
         elif verb in ("quit", "q"):
             self.exit()
         else:
             self._emit(
-                f"[{_RED}]unknown: {cmd}[/{_RED}]  [{_DIM}]try: sync push land restack quit[/{_DIM}]"
+                f"[{_T.red}]unknown: {cmd}[/{_T.red}]  [{_T.dim}]try: sync push land restack quit[/{_T.dim}]"
             )
 
     # ── Helpers ─────────────────────────────────────────────────────────────
 
     def _run_arc(self, cmd: str, branch: str = "") -> None:
-        self._emit(f"[{_MUTED}]$ arc {cmd}{' ' + branch if branch else ''}[/{_MUTED}]")
+        self._emit(f"[{_T.muted}]$ arc {cmd}{' ' + branch if branch else ''}[/{_T.muted}]")
         self._run_arc_worker(cmd, branch)
 
     @work(thread=True, exit_on_error=False)
@@ -733,16 +855,16 @@ SummaryWidget {{
             self.call_from_thread(self._on_arc_failure, cmd, str(e)[:120])
 
     def _on_arc_success(self, cmd: str, output: str) -> None:
-        self._emit(f"[{_GREEN}]✓ {cmd} succeeded[/{_GREEN}]")
+        self._emit(f"[{_T.green}]✓ {cmd} succeeded[/{_T.green}]")
         if output:
             for line in output.splitlines()[:8]:
-                self._emit(f"[{_DIM}]  {line}[/{_DIM}]")
+                self._emit(f"[{_T.dim}]  {line}[/{_T.dim}]")
         self._load_state_async()
 
     def _on_arc_failure(self, cmd: str, error: str) -> None:
-        self._emit(f"[{_RED}]✗ {cmd} failed[/{_RED}]")
+        self._emit(f"[{_T.red}]✗ {cmd} failed[/{_T.red}]")
         for line in error.splitlines()[:5]:
-            self._emit(f"[{_RED}]  {line}[/{_RED}]")
+            self._emit(f"[{_T.red}]  {line}[/{_T.red}]")
 
     @work(thread=True)
     def _open_url_worker(self, url: str) -> None:
@@ -812,5 +934,6 @@ SummaryWidget {{
 
 
 def run_dashboard(root: Path) -> None:
-    app = DashboardApp(root)
+    theme = load_theme(root)
+    app = DashboardApp(root, theme=theme)
     app.run()
