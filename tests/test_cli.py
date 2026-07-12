@@ -2465,6 +2465,7 @@ def test_cli_command_inventory_unchanged():
         "stack",
         "report",
         "dashboard",
+        "edit",
     }
     assert set(cli.commands.keys()) == expected
     assert set(cli.commands["config"].commands.keys()) == {"get", "set", "list"}

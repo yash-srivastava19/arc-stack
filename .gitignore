@@ -26,8 +26,20 @@ htmlcov/
 # arc stack state — per-clone, not shared
 .arc/state.json
 
-# Internal design docs — not for public repo
-docs/
+# Internal planning docs — not for public repo
+docs/superpowers/
+docs/developer/
+docs/features/
+docs/BACKLOG.md
+
+# Sphinx build output
+docs/_build/
 
 # VCR cassettes — masked for PII, safe to commit for test reproducibility
 # (recorded API interactions with automatic token/email masking)
+site/
+
+# Docusaurus
+node_modules/
+.docusaurus/
+build/

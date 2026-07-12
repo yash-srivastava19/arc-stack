@@ -1,0 +1,562 @@
+/* ============================================================
+   arc docs — Stripe-inspired minimal theme (light only)
+   ============================================================ */
+
+:root {
+  /* Brand palette */
+  --ifm-color-primary: #0a2540;
+  --ifm-color-primary-dark: #081d32;
+  --ifm-color-primary-darker: #071929;
+  --ifm-color-primary-darkest: #041018;
+  --ifm-color-primary-light: #0d3058;
+  --ifm-color-primary-lighter: #103a6a;
+  --ifm-color-primary-lightest: #164d8c;
+
+  /* Typography */
+  --ifm-font-family-base: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --ifm-font-size-base: 14.5px;
+  --ifm-line-height-base: 1.7;
+  --ifm-font-weight-normal: 400;
+  --ifm-font-weight-semibold: 500;
+  --ifm-font-weight-bold: 600;
+
+  /* Headings */
+  --ifm-heading-font-weight: 600;
+  --ifm-heading-line-height: 1.3;
+  --ifm-heading-color: #0a2540;
+  --ifm-h1-font-size: 1.6rem;
+  --ifm-h2-font-size: 1rem;
+  --ifm-h3-font-size: 0.9rem;
+
+  /* Layout */
+  --ifm-navbar-height: 52px;
+  --ifm-navbar-shadow: none;
+  --ifm-sidebar-width: 240px;
+
+  /* Text colors */
+  --ifm-color-content: #1a1a2e;
+  --ifm-color-content-secondary: #425466;
+
+  /* Surfaces */
+  --ifm-background-color: #ffffff;
+  --ifm-background-surface-color: #f6f9fc;
+  --ifm-navbar-background-color: #ffffff;
+
+  /* Borders */
+  --ifm-toc-border-color: #e6ebf1;
+  --ifm-color-emphasis-100: #f6f9fc;
+  --ifm-color-emphasis-200: #e6ebf1;
+  --ifm-color-emphasis-300: #c1cad6;
+  --ifm-color-emphasis-600: #697386;
+  --ifm-color-emphasis-700: #425466;
+  --ifm-color-emphasis-900: #0a2540;
+  --ifm-border-color: #e6ebf1;
+
+  /* Code */
+  --ifm-code-font-size: 87%;
+  --ifm-code-border-radius: 4px;
+  --ifm-code-background: #f6f9fc;
+  --ifm-code-padding-horizontal: 0.3rem;
+  --ifm-code-padding-vertical: 0.1rem;
+
+  /* Links */
+  --ifm-link-color: #5469d4;
+  --ifm-link-hover-color: #3d4eb5;
+  --ifm-link-decoration: none;
+
+  /* Menu */
+  --ifm-menu-color: #425466;
+  --ifm-menu-color-active: #0a2540;
+  --ifm-menu-color-background-active: #eef2ff;
+  --ifm-menu-link-padding-horizontal: 0.65rem;
+  --ifm-menu-link-padding-vertical: 0.3rem;
+
+  /* Tables */
+  --ifm-table-stripe-background: #f6f9fc;
+  --ifm-table-border-color: #e6ebf1;
+
+  --docusaurus-highlighted-code-line-bg: rgba(84, 105, 212, 0.07);
+}
+
+/* ============================================================
+   GLOBAL
+   ============================================================ */
+
+html {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  color: #425466;
+}
+
+p {
+  color: #425466;
+}
+
+strong {
+  color: #0a2540;
+  font-weight: 600;
+}
+
+a {
+  color: var(--ifm-link-color);
+}
+
+a:hover {
+  text-decoration: none;
+  color: var(--ifm-link-hover-color);
+}
+
+/* ============================================================
+   NAVBAR
+   ============================================================ */
+
+.navbar {
+  border-bottom: 1px solid #e6ebf1;
+  padding: 0 1.5rem;
+  box-shadow: none;
+}
+
+.navbar__title {
+  font-weight: 700;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+  color: #0a2540;
+}
+
+.navbar__link {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #425466;
+  padding: 0.35rem 0.6rem;
+  border-radius: 5px;
+}
+
+.navbar__link:hover,
+.navbar__link--active {
+  color: #0a2540;
+  background: #f6f9fc;
+}
+
+.navbar__items--right .navbar__link {
+  color: #697386;
+}
+
+/* ============================================================
+   SIDEBAR
+   ============================================================ */
+
+.theme-doc-sidebar-container {
+  border-right: 1px solid #e6ebf1 !important;
+}
+
+.theme-doc-sidebar-menu {
+  padding: 0.75rem 0 2rem;
+  font-size: 0.855rem;
+}
+
+/* Category labels — non-interactive section headers */
+.menu__list-item-collapsible {
+  font-size: 0.69rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: #9aa5b4;
+  padding: 1rem var(--ifm-menu-link-padding-horizontal) 0.3rem;
+  pointer-events: none;
+  cursor: default;
+}
+
+.menu__list-item-collapsible:hover {
+  background: none;
+}
+
+.menu__caret {
+  display: none;
+}
+
+/* Links */
+.menu__link {
+  font-size: 0.855rem;
+  font-weight: 400;
+  border-radius: 5px;
+  color: #425466;
+  padding: 0.28rem var(--ifm-menu-link-padding-horizontal);
+  transition: background 0.1s, color 0.1s;
+  line-height: 1.4;
+}
+
+.menu__link:hover {
+  background: #f6f9fc;
+  color: #0a2540;
+}
+
+.menu__link--active,
+.menu__link--active:hover {
+  color: #5469d4 !important;
+  background: #eef2ff !important;
+  font-weight: 500;
+}
+
+/* Nested list indent */
+.menu__list .menu__list {
+  padding-left: 0.6rem;
+  border-left: 1px solid #e6ebf1;
+  margin-left: 0.6rem;
+  margin-top: 0.15rem;
+}
+
+/* ============================================================
+   REMOVE RIGHT TOC COLUMN — content fills full width
+   ============================================================ */
+
+@media (min-width: 997px) {
+  .col.col--3 {
+    display: none !important;
+    width: 0 !important;
+    flex: none !important;
+    padding: 0 !important;
+  }
+
+  /* Force content column to fill all remaining space */
+  .row > div[class*="docItemCol"] {
+    max-width: 100% !important;
+    flex: 1 1 100% !important;
+    width: 100% !important;
+  }
+
+  /* Fallback: any col that's not col--3 inside a doc row */
+  .col.col--9,
+  .col.col--7 {
+    max-width: 100% !important;
+    flex: 0 0 100% !important;
+  }
+}
+
+/* ============================================================
+   CONTENT AREA
+   ============================================================ */
+
+/* Max reading width — keeps lines comfortable but doesn't waste space */
+.markdown {
+  font-size: var(--ifm-font-size-base);
+  line-height: var(--ifm-line-height-base);
+}
+
+.markdown h1 {
+  font-size: 1.55rem;
+  margin-bottom: 0.3rem;
+  letter-spacing: -0.025em;
+  color: #0a2540;
+  margin-top: 0;
+}
+
+.markdown h2 {
+  font-size: 1rem;
+  font-weight: 650;
+  color: #0a2540;
+  border-top: 1px solid #e6ebf1;
+  padding-top: 1.5rem;
+  margin-top: 2rem;
+  margin-bottom: 0.6rem;
+  letter-spacing: -0.01em;
+}
+
+.markdown h3 {
+  font-size: 0.875rem;
+  font-weight: 650;
+  color: #0a2540;
+  margin-top: 1.25rem;
+  margin-bottom: 0.4rem;
+}
+
+.markdown h4 {
+  font-size: 0.855rem;
+  font-weight: 600;
+  color: #0a2540;
+  margin-top: 1rem;
+}
+
+.markdown > p {
+  margin-bottom: 0.85rem;
+}
+
+.markdown li {
+  margin-bottom: 0.2rem;
+}
+
+/* Breadcrumbs */
+.breadcrumbs {
+  font-size: 0.77rem;
+  color: #9aa5b4;
+  margin-bottom: 0.5rem;
+}
+
+.breadcrumbs__item .breadcrumbs__link {
+  color: #9aa5b4;
+  background: none;
+}
+
+.breadcrumbs__item--active .breadcrumbs__link {
+  color: #697386;
+}
+
+/* Pagination */
+.pagination-nav {
+  margin-top: 3rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e6ebf1;
+  gap: 1rem;
+}
+
+.pagination-nav__link {
+  border: 1px solid #e6ebf1;
+  border-radius: 7px;
+  padding: 0.75rem 1rem;
+  transition: border-color 0.15s;
+}
+
+.pagination-nav__link:hover {
+  border-color: #c1cad6;
+  text-decoration: none;
+}
+
+.pagination-nav__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #0a2540;
+}
+
+.pagination-nav__sublabel {
+  font-size: 0.75rem;
+  color: #9aa5b4;
+  margin-bottom: 0.25rem;
+}
+
+/* ============================================================
+   INLINE CODE
+   ============================================================ */
+
+code {
+  background: #f6f9fc;
+  border: 1px solid #e6ebf1;
+  border-radius: 4px;
+  color: #0a2540;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.84em;
+  padding: 0.1em 0.35em;
+}
+
+/* ============================================================
+   CODE BLOCKS
+   ============================================================ */
+
+div[class^="codeBlockContainer"],
+div[class*=" codeBlockContainer"] {
+  border-radius: 7px;
+  border: 1px solid #e6ebf1;
+  overflow: hidden;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+div[class^="codeBlockTitle"],
+div[class*=" codeBlockTitle"] {
+  background: #f6f9fc;
+  border-bottom: 1px solid #e6ebf1;
+  font-size: 0.77rem;
+  font-weight: 600;
+  color: #697386;
+  font-family: var(--ifm-font-family-monospace);
+  padding: 0.45rem 1rem;
+  letter-spacing: 0.02em;
+}
+
+.prism-code {
+  font-family: var(--ifm-font-family-monospace) !important;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  background: #f8f9fa !important;
+}
+
+.token-line {
+  padding: 0 1rem;
+}
+
+button[class^="copyButton"],
+button[class*=" copyButton"] {
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+div[class^="codeBlockContainer"]:hover button[class^="copyButton"],
+div[class^="codeBlockContainer"]:hover button[class*=" copyButton"] {
+  opacity: 1;
+}
+
+/* ============================================================
+   TABLES
+   ============================================================ */
+
+table {
+  font-size: 0.855rem;
+  border-collapse: collapse;
+  width: 100%;
+  margin-bottom: 1.25rem;
+  display: table;
+}
+
+table th {
+  background: #f6f9fc;
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #697386;
+  padding: 0.5rem 0.85rem;
+  border: 1px solid #e6ebf1;
+  white-space: nowrap;
+}
+
+table td {
+  padding: 0.5rem 0.85rem;
+  border: 1px solid #e6ebf1;
+  color: #425466;
+  vertical-align: top;
+}
+
+table td code {
+  font-size: 0.82rem;
+}
+
+table tr:nth-child(even) td {
+  background: #fafbfc;
+}
+
+/* Wide tables scroll, don't overflow */
+.markdown table {
+  display: block;
+  overflow-x: auto;
+}
+
+/* ============================================================
+   ADMONITIONS
+   ============================================================ */
+
+.admonition {
+  border-radius: 6px;
+  border-width: 0;
+  border-left-width: 3px;
+  font-size: 0.875rem;
+  padding: 0.8rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.admonition-heading h5 {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  margin-bottom: 0.3rem;
+}
+
+.admonition-content p {
+  margin-bottom: 0;
+  color: inherit;
+}
+
+.alert--info,
+.admonition-note {
+  background: #f0f4ff;
+  border-color: #5469d4;
+  color: #2d3a8c;
+}
+
+.alert--success,
+.admonition-tip {
+  background: #f0faf5;
+  border-color: #1ea672;
+  color: #0d5c3d;
+}
+
+.alert--warning,
+.admonition-caution {
+  background: #fffbf0;
+  border-color: #e5a422;
+  color: #7a5500;
+}
+
+.alert--danger,
+.admonition-danger {
+  background: #fff0f0;
+  border-color: #df1b41;
+  color: #8c0d22;
+}
+
+/* ============================================================
+   TABS
+   ============================================================ */
+
+.tabs {
+  border-bottom: 1px solid #e6ebf1;
+  margin-bottom: 0;
+  gap: 0;
+}
+
+.tabs__item {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #697386;
+  padding: 0.45rem 0.85rem;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  border-radius: 0;
+}
+
+.tabs__item--active {
+  color: #5469d4;
+  border-bottom-color: #5469d4;
+  background: none;
+}
+
+.tabs__item:hover:not(.tabs__item--active) {
+  background: #f6f9fc;
+  color: #0a2540;
+  border-radius: 4px 4px 0 0;
+}
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+
+.footer {
+  background: #f6f9fc;
+  border-top: 1px solid #e6ebf1;
+  padding: 1.25rem 2rem;
+}
+
+.footer__copyright {
+  font-size: 0.8rem;
+  color: #9aa5b4;
+}
+
+.footer__copyright a {
+  color: #697386;
+}
+
+/* ============================================================
+   MISC
+   ============================================================ */
+
+.theme-edit-this-page {
+  font-size: 0.8rem;
+  color: #9aa5b4;
+  margin-top: 2.5rem;
+}
+
+.thin-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+.thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.thin-scrollbar::-webkit-scrollbar-thumb { background: #c1cad6; border-radius: 2px; }
