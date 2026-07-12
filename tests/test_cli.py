@@ -1357,6 +1357,36 @@ def test_rebase_continue_sync_initiated_prunes_merged_branches(tmp_path):
     mock_sync.assert_called_once()
 
 
+def test_rebase_continue_sync_initiated_fires_post_sync_hook(tmp_path):
+    _write_state_with_branches(tmp_path)
+    state = {
+        "command": "sync",
+        "plan": [{"branch": "feat/auth", "onto": "main"}],
+        "completed": [],
+        "pre_shas": {"feat/auth": "s1"},
+        "started_at": "2026-01-01T00:00:00+00:00",
+    }
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(_json.dumps(state))
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.rebase_continue", return_value=MagicMock(returncode=0)),
+        patch("arc.github.pr_is_merged", return_value=False),
+        patch("arc.commands.sync.tip.sync_tip_branch"),
+        patch("arc.commands.sync._shared.run_lifecycle_hook") as mock_hook,
+        patch("arc.commands.sync._shared._maybe_print_periodic_hint") as mock_hint,
+    ):
+        result = runner.invoke(cli, ["rebase", "--continue"])
+    assert result.exit_code == 0
+    mock_hook.assert_called_once()
+    assert mock_hook.call_args.args[2] == "post-sync"
+    mock_hint.assert_called_once_with(tmp_path)
+
+
 def test_rebase_abort_no_paused_state(tmp_path):
     _write_state_with_branches(tmp_path)
     runner = CliRunner()

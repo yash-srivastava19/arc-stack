@@ -309,10 +309,21 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
             data = _prune_merged_branches(data, root, quiet)
             if not quiet:
                 err.print("Stack synced. Run 'arc push' to push to remote.")
+            tip.sync_tip_branch(data)
+            _shared.run_lifecycle_hook(
+                root,
+                data,
+                "post-sync",
+                branch=git.current_branch(),
+                skip=False,
+                output_json=False,
+                quiet=quiet,
+            )
+            _shared._maybe_print_periodic_hint(root)
         else:
             if not quiet:
                 err.print("Rebase complete.")
-        tip.sync_tip_branch(data)
+            tip.sync_tip_branch(data)
         return
 
     if do_abort:
