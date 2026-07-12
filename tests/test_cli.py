@@ -1322,12 +1322,18 @@ def test_rebase_continue_resumes_and_finishes(tmp_path):
         patch("arc.git.checkout"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
         patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
+        patch("arc.commands.sync._shared.run_lifecycle_hook") as mock_hook,
+        patch("arc.commands.sync._shared._maybe_print_periodic_hint") as mock_hint,
     ):
         result = runner.invoke(cli, ["rebase", "--continue"])
     assert result.exit_code == 0
     assert "Rebase complete" in result.output
     assert not state_path.exists()
     mock_sync.assert_called_once()
+    # A plain rebase-initiated cascade (not sync-initiated) must never fire
+    # the post-sync hook or periodic hint — those are sync-only.
+    mock_hook.assert_not_called()
+    mock_hint.assert_not_called()
 
 
 def test_rebase_continue_sync_initiated_prunes_merged_branches(tmp_path):
