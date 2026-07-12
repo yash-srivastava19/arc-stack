@@ -1120,6 +1120,7 @@ def test_drop_removes_branch_and_restacks(tmp_path):
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", side_effect=fake_rebase),
     ):
         result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
@@ -1127,6 +1128,27 @@ def test_drop_removes_branch_and_restacks(tmp_path):
     data = _json.loads((tmp_path / ".arc" / "state.json").read_text())
     assert all(b["name"] != "feat/auth" for b in data["branches"])
     assert "main" in rebase_calls  # feat/api rebased onto main
+
+
+def test_drop_exits_3_on_conflict_and_saves_state(tmp_path):
+    _write_state_with_branches(tmp_path)
+    conflict_result = MagicMock(returncode=1)
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
+        patch("arc.git.rebase_fork_point", return_value=conflict_result),
+        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.conflicted_files", return_value=["api.py"]),
+    ):
+        result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
+    assert result.exit_code == 3
+    assert "arc rebase --continue" in result.output
+    assert "arc drop" in result.output
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    assert state_path.exists()
 
 
 def test_drop_requires_force_non_interactive(tmp_path):
@@ -2421,6 +2443,7 @@ def test_drop_calls_sync_tip_branch(tmp_path):
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
         patch("arc.commands.stack.tip.sync_tip_branch") as mock_sync,
     ):

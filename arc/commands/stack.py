@@ -8,7 +8,7 @@ import sys
 import click
 from rich.tree import Tree
 
-from arc import git, github, ops, tip
+from arc import cascade, git, github, ops, tip
 from arc import graph as _graph
 from arc import state as st
 from arc.commands import _shared
@@ -328,14 +328,27 @@ def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
             err.print(f"\\[dry-run] rebase {ab} onto {parent}")
         return
     with _shared.with_error_hint(root):
-        for ab in above:
-            git.checkout(ab)
-            result = git.rebase_fork_point(parent)
-            if result.returncode != 0:
-                git.rebase_abort()
-                err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
-                _shared._maybe_print_error_hint(root)
-                sys.exit(3)
+        plan: list[ops.RebasePlanStep] = [{"branch": ab, "onto": parent} for ab in above]
+        result = cascade.run_cascade(plan, root, command="rebase", quiet=quiet)
+        if result["state"] == "paused":
+            files = result["conflicted_files"]
+            err.print(
+                f"Conflict rebasing {result['conflict_branch']}: "
+                f"{', '.join(files) or 'see git status'}"
+            )
+            err.print(
+                f"Resolve, then run 'arc rebase --continue', "
+                f"then re-run 'arc drop {name} --force' to finish."
+            )
+            _shared._maybe_print_error_hint(root)
+            sys.exit(3)
+        if result["state"] == "error":
+            err.print(
+                f"Could not start rebase of {result['branch']}: {result['message']}",
+                style="red",
+            )
+            _shared._maybe_print_error_hint(root)
+            sys.exit(3)
         data = st.remove_branch(data, name)
         st.save(root, data)
         tip.sync_tip_branch(data)
