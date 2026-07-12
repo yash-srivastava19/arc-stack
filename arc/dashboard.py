@@ -296,7 +296,13 @@ def load_local_stack_view(root: Path) -> StackView:
 
         try:
             log_result = subprocess.run(
-                ["git", "log", f"{parent}..{name}", "--oneline", "--max-count=20"],
+                [
+                    "git",
+                    "log",
+                    f"{parent}..{name}",
+                    "--format=%h\x1f%s\x1f%ar\x1f%an",
+                    "--max-count=20",
+                ],
                 capture_output=True,
                 text=True,
                 timeout=5,
@@ -536,31 +542,99 @@ class BranchCommitWidget(Static):
         super().__init__(**kwargs)
         self.stack_view = stack_view
 
-    def render(self) -> str:
+    def render(self) -> str:  # noqa: PLR0912
         t = _T
         current = self.stack_view.current_branch
         if not current:
             return ""
+
+        n = self.stack_view.current_index
+        total = len(self.stack_view.branches)
+        position = f"branch {n + 1} of {total}"
+
+        lines: list[str] = []
+
+        # ── header ────────────────────────────────────────────────────────────
+        pr_badge = (
+            f"  [{t.blue}]PR #{current.pr_number}[/{t.blue}]"
+            if current.pr_number
+            else f"  [{t.dim}]no PR yet[/{t.dim}]"
+        )
+        lines.append(
+            f"[{t.muted}]commits in [/{t.muted}][{t.bright}]{current.name}[/{t.bright}]"
+            f"{pr_badge}  [{t.dim}]{position}[/{t.dim}]"
+        )
+        lines.append(f"[{t.dim}]{'─' * 52}[/{t.dim}]")
+
         if not current.commit_messages:
             if current.commits == 0:
-                return (
-                    f"[{t.dim}]no commits ahead of {current.base}[/{t.dim}]"
-                    f"\n[{t.dim}]→ run arc restack to rebase[/{t.dim}]"
-                    if current.pr_number
-                    else f"[{t.dim}]no commits yet — add commits to {current.name}[/{t.dim}]"
-                )
-            return f"[{t.dim}]{current.commits} commit(s) — loading messages…[/{t.dim}]"
+                if current.pr_number:
+                    lines.append(f"[{t.yellow}]⚠  no commits ahead of {current.base}[/{t.yellow}]")
+                    lines.append(f"[{t.dim}]   branch may need rebasing — run arc sync[/{t.dim}]")
+                else:
+                    lines.append(f"[{t.dim}]no commits yet[/{t.dim}]")
+                    lines.append(
+                        f"[{t.dim}]make some changes and commit to {current.name}[/{t.dim}]"
+                    )
+            else:
+                lines.append(f"[{t.dim}]{current.commits} commit(s) — loading…[/{t.dim}]")
+        else:
+            for raw in current.commit_messages:
+                parts = raw.split("\x1f", 3)
+                if len(parts) == 4:
+                    sha, subject, when, author = parts
+                else:
+                    sha = raw[:7]
+                    subject = raw[8:] if len(raw) > 8 else raw
+                    when = ""
+                    author = ""
+                lines.append(f"  [{t.dim}]{sha}[/{t.dim}]  [{t.fg}]{subject}[/{t.fg}]")
+                if when or author:
+                    lines.append(
+                        f"         [{t.dim}]{when}[/{t.dim}]"
+                        + (f"  [{t.muted}]{author}[/{t.muted}]" if author else "")
+                    )
 
-        lines = [
-            f"[{t.muted}]commits in {current.name}[/{t.muted}]"
-            f"  [{t.dim}]({current.commits})[/{t.dim}]"
-        ]
-        for msg in current.commit_messages:
-            # split hash from subject
-            parts = msg.split(" ", 1)
-            sha = parts[0] if parts else ""
-            subject = parts[1] if len(parts) > 1 else msg
-            lines.append(f"  [{t.dim}]{sha}[/{t.dim}] [{t.fg}]{subject}[/{t.fg}]")
+        # ── next-action hints ─────────────────────────────────────────────────
+        lines.append("")
+        lines.append(f"[{t.dim}]{'─' * 52}[/{t.dim}]")
+        if not current.pr_number:
+            lines.append(f"[{t.muted}]next steps[/{t.muted}]")
+            lines.append(
+                f"  [{t.green}]s[/{t.green}]  [{t.dim}]arc sync  — rebase on {current.base}[/{t.dim}]"
+            )
+            lines.append(
+                f"  [{t.green}]p[/{t.green}]  [{t.dim}]arc push  — push branch to remote[/{t.dim}]"
+            )
+            lines.append(
+                f"  [{t.green}]n[/{t.green}]  [{t.dim}]arc new <name>  — start next branch[/{t.dim}]"
+            )
+        elif current.ci_passing is False:
+            lines.append(f"[{t.red}]✗ CI failing — fix and push to unblock[/{t.red}]")
+            lines.append(
+                f"  [{t.green}]p[/{t.green}]  [{t.dim}]arc push  — update PR after fix[/{t.dim}]"
+            )
+            lines.append(f"  [{t.green}]o[/{t.green}]  [{t.dim}]open PR in browser[/{t.dim}]")
+        elif current.approved:
+            lines.append(f"[{t.green}]✓ approved — ready to land![/{t.green}]")
+            lines.append(
+                f"  [{t.green}]l[/{t.green}]  [{t.dim}]arc land  — merge this PR[/{t.dim}]"
+            )
+            lines.append(f"  [{t.green}]o[/{t.green}]  [{t.dim}]open PR in browser[/{t.dim}]")
+        elif current.draft:
+            lines.append(f"[{t.muted}]draft PR — mark ready when done[/{t.muted}]")
+            lines.append(
+                f"  [{t.green}]p[/{t.green}]  [{t.dim}]arc push  — update draft PR[/{t.dim}]"
+            )
+            lines.append(f"  [{t.green}]o[/{t.green}]  [{t.dim}]open PR in browser[/{t.dim}]")
+        else:
+            lines.append(f"[{t.muted}]awaiting review[/{t.muted}]")
+            lines.append(
+                f"  [{t.green}]o[/{t.green}]  [{t.dim}]open PR to check comments[/{t.dim}]"
+            )
+            lines.append(
+                f"  [{t.green}]p[/{t.green}]  [{t.dim}]arc push  — push new changes[/{t.dim}]"
+            )
 
         return "\n".join(lines)
 
@@ -610,9 +684,20 @@ class DetailWidget(Static):
                 review = f"[{t.yellow}]○ awaiting review[/{t.yellow}]"
             lines.append(f"[{t.dim}]review [/{t.dim}]{review}")
         else:
-            lines.append(
-                f"[{t.dim}]pr     [/{t.dim}][{t.dim}]none — run arc push && arc submit[/{t.dim}]"
-            )
+            lines.append(f"[{t.dim}]pr     [/{t.dim}][{t.dim}]not submitted yet[/{t.dim}]")
+            lines.append("")
+            lines.append(f"[{t.muted}]to open a PR:[/{t.muted}]")
+            lines.append(f"  [{t.dim}]arc push    push branch to remote[/{t.dim}]")
+            lines.append(f"  [{t.dim}]arc submit  create PR on GitHub[/{t.dim}]")
+            if current.commit_messages:
+                lines.append("")
+                lines.append(f"[{t.dim}]{'─' * 36}[/{t.dim}]")
+                lines.append(f"[{t.muted}]recent commits[/{t.muted}]")
+                for raw in current.commit_messages[:5]:
+                    parts = raw.split("\x1f", 3)
+                    sha = parts[0] if parts else raw[:7]
+                    subject = parts[1] if len(parts) >= 2 else raw
+                    lines.append(f"  [{t.dim}]{sha}[/{t.dim}]  [{t.fg}]{subject}[/{t.fg}]")
 
         return "\n".join(lines)
 
@@ -833,6 +918,7 @@ class DashboardApp(App):
         Binding("n", "cmd_new", "new branch", show=False),
         Binding("a", "cmd_analyze", "analyze", show=False),
         Binding("c", "cmd_checkout", "checkout", show=False),
+        Binding("ctrl+s", "save_screenshot", "screenshot", show=False),
     ]
 
     TITLE = "arc dashboard"
@@ -1002,6 +1088,15 @@ class DashboardApp(App):
     def action_refresh(self) -> None:
         self._emit(f"[{_T.muted}]refreshing…[/{_T.muted}]")
         self._load_state_async()
+
+    def action_save_screenshot(self) -> None:
+        path = Path(f"arc-dashboard-{_T.name}.svg")
+        try:
+            svg = self.export_screenshot()
+            path.write_text(svg)
+            self._emit(f"[{_T.green}]✓ screenshot saved → {path.resolve()}[/{_T.green}]")
+        except Exception as e:
+            self._emit(f"[{_T.red}]screenshot failed: {e}[/{_T.red}]")
 
     # ── Keys ─────────────────────────────────────────────────────────────────
 
