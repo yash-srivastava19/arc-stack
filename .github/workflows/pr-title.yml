@@ -1,0 +1,34 @@
+name: PR Title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  lint-title:
+    name: Conventional commit format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Matches cliff.toml's commit_parsers plus CONTRIBUTING.md's
+          # documented conventions. A squash-merge uses the PR title as the
+          # commit message, so an unparseable title (like a default GitHub
+          # title with no type prefix) silently breaks the changelog for
+          # that release instead of failing loudly here.
+          types: |
+            feat
+            fix
+            refactor
+            test
+            docs
+            release
+            chore
+            style
+            infra
+            ci
+            qol
+            recover
+          requireScope: false

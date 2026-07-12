@@ -1,0 +1,19 @@
+#!/bin/sh
+# Runs the same checks CI runs, before the commit lands locally instead of
+# after a push-and-wait round trip. Install once per clone:
+#   git config core.hooksPath .githooks
+set -e
+
+echo "pre-commit: ruff check..."
+uv run ruff check arc/ tests/
+
+echo "pre-commit: ruff format --check..."
+uv run ruff format --check arc/ tests/
+
+echo "pre-commit: mypy..."
+uv run mypy arc/
+
+echo "pre-commit: pytest -x -q..."
+uv run pytest -x -q
+
+echo "pre-commit: all checks passed."
