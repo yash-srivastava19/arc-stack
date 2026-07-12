@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -144,16 +144,29 @@ DEFAULT_THEME = "arc"
 _T: DashboardTheme = THEMES[DEFAULT_THEME]
 
 
-def load_theme(root: Path, override: str | None = None) -> DashboardTheme:
-    """Load theme from CLI override, then config, then fall back to 'arc'."""
+_VALID_THEMES = ", ".join(THEMES)
+
+
+def load_theme(root: Path, override: str | None = None) -> tuple[DashboardTheme, str | None]:
+    """Load theme from CLI override, then config, then fall back to 'arc'.
+
+    Returns (theme, warning_message | None).  Callers should display the warning
+    if not None so the user learns the available theme names.
+    """
     if override:
-        return THEMES.get(override, THEMES[DEFAULT_THEME])
+        if override in THEMES:
+            return THEMES[override], None
+        warn = f"Unknown theme '{override}'. Available: {_VALID_THEMES}. Falling back to 'arc'."
+        return THEMES[DEFAULT_THEME], warn
     try:
         cfg = st.load_config(root)
         name = cfg.get("dashboard", {}).get("theme", DEFAULT_THEME)
-        return THEMES.get(name, THEMES[DEFAULT_THEME])
+        if name not in THEMES:
+            warn = f"Config theme '{name}' not found. Available: {_VALID_THEMES}. Using 'arc'."
+            return THEMES[DEFAULT_THEME], warn
+        return THEMES[name], None
     except Exception:
-        return THEMES[DEFAULT_THEME]
+        return THEMES[DEFAULT_THEME], None
 
 
 # ── Data model ───────────────────────────────────────────────────────────────
@@ -173,6 +186,7 @@ class BranchStatus:
     revision: int
     blocker_reason: str | None
     base: str  # parent branch name
+    commit_messages: list[str] = field(default_factory=list)
 
     @property
     def status_icon(self) -> str:
@@ -280,6 +294,17 @@ def load_local_stack_view(root: Path) -> StackView:
         except Exception:
             commits = 0
 
+        try:
+            log_result = subprocess.run(
+                ["git", "log", f"{parent}..{name}", "--oneline", "--max-count=20"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            commit_messages = [ln.strip() for ln in log_result.stdout.splitlines() if ln.strip()]
+        except Exception:
+            commit_messages = []
+
         branches.append(
             BranchStatus(
                 name=name,
@@ -292,6 +317,7 @@ def load_local_stack_view(root: Path) -> StackView:
                 revision=branch_dict.get("revision", 0),
                 blocker_reason=None,
                 base=parent,
+                commit_messages=commit_messages,
             )
         )
 
@@ -503,6 +529,42 @@ class BranchTreeWidget(Static):
         return "\n".join(lines)
 
 
+class BranchCommitWidget(Static):
+    """Commit list for the currently selected branch (left column, below tree)."""
+
+    def __init__(self, stack_view: StackView, **kwargs):
+        super().__init__(**kwargs)
+        self.stack_view = stack_view
+
+    def render(self) -> str:
+        t = _T
+        current = self.stack_view.current_branch
+        if not current:
+            return ""
+        if not current.commit_messages:
+            if current.commits == 0:
+                return (
+                    f"[{t.dim}]no commits ahead of {current.base}[/{t.dim}]"
+                    f"\n[{t.dim}]→ run arc restack to rebase[/{t.dim}]"
+                    if current.pr_number
+                    else f"[{t.dim}]no commits yet — add commits to {current.name}[/{t.dim}]"
+                )
+            return f"[{t.dim}]{current.commits} commit(s) — loading messages…[/{t.dim}]"
+
+        lines = [
+            f"[{t.muted}]commits in {current.name}[/{t.muted}]"
+            f"  [{t.dim}]({current.commits})[/{t.dim}]"
+        ]
+        for msg in current.commit_messages:
+            # split hash from subject
+            parts = msg.split(" ", 1)
+            sha = parts[0] if parts else ""
+            subject = parts[1] if len(parts) > 1 else msg
+            lines.append(f"  [{t.dim}]{sha}[/{t.dim}] [{t.fg}]{subject}[/{t.fg}]")
+
+        return "\n".join(lines)
+
+
 class DetailWidget(Static):
     """Branch detail panel — $ arc show <branch>."""
 
@@ -684,10 +746,21 @@ Screen {{
 
 #tree_scroll {{
     height: 1fr;
+    max-height: 40%;
     background: {t.bg};
     scrollbar-color: {t.track} {t.bg};
     scrollbar-size: 1 1;
     padding: 1 2;
+}}
+
+#commit_log_left {{
+    height: 1fr;
+    background: {t.bg};
+    border-top: tall {t.border};
+    scrollbar-color: {t.track} {t.bg};
+    scrollbar-size: 1 1;
+    padding: 1 2;
+    overflow-y: auto;
 }}
 
 #right_col {{
@@ -783,6 +856,8 @@ class DashboardApp(App):
                 yield ActionsBarWidget(id="actions_bar")
                 with ScrollableContainer(id="tree_scroll"):
                     yield BranchTreeWidget(empty, loading=True, id="branch_tree")
+                with ScrollableContainer(id="commit_log_left"):
+                    yield BranchCommitWidget(empty, id="branch_commits")
             with Vertical(id="right_col"):
                 yield DetailWidget(empty, id="detail")
                 yield RichLog(id="output_log", highlight=True, markup=True)
@@ -1111,6 +1186,9 @@ class DashboardApp(App):
             tree = self.query_one("#branch_tree", BranchTreeWidget)
             tree.stack_view = view
             tree.refresh()
+            commits = self.query_one("#branch_commits", BranchCommitWidget)
+            commits.stack_view = view
+            commits.refresh()
         except Exception:
             pass
 
@@ -1142,6 +1220,10 @@ class DashboardApp(App):
             tree.loading = self._loading
             tree.refresh()
 
+            commits = self.query_one("#branch_commits", BranchCommitWidget)
+            commits.stack_view = view
+            commits.refresh()
+
             detail = self.query_one("#detail", DetailWidget)
             detail.stack_view = view
             detail.refresh()
@@ -1150,6 +1232,9 @@ class DashboardApp(App):
 
 
 def run_dashboard(root: Path, theme_name: str | None = None) -> None:
-    theme = load_theme(root, override=theme_name)
+    theme, warn = load_theme(root, override=theme_name)
     app = DashboardApp(root, theme=theme)
+    if warn:
+        # emit warning into the log panel once the app is running
+        app.call_later(app._emit, f"[{theme.yellow}]⚠  {warn}[/{theme.yellow}]")
     app.run()

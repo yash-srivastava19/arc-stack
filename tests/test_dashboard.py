@@ -3,12 +3,14 @@ from unittest.mock import patch
 
 from arc.dashboard import (
     THEMES,
+    BranchCommitWidget,
     BranchStatus,
     BranchTreeWidget,
     DetailWidget,
     StackView,
     SummaryWidget,
     load_stack_view,
+    load_theme,
 )
 
 _ARC = THEMES["arc"]  # default theme used in color assertions
@@ -25,6 +27,7 @@ def make_branch(
     revision=1,
     blocker_reason=None,
     base="main",
+    commit_messages=None,
 ) -> BranchStatus:
     return BranchStatus(
         name=name,
@@ -37,6 +40,7 @@ def make_branch(
         revision=revision,
         blocker_reason=blocker_reason,
         base=base,
+        commit_messages=commit_messages or [],
     )
 
 
@@ -521,3 +525,56 @@ class TestDashboardIntegration:
         assert "feat/auth" in detail_output
         assert "#1" in detail_output
         assert "passing" in detail_output
+
+
+class TestBranchCommitWidget:
+    def test_renders_empty_when_no_branch(self):
+        stack = StackView(base="main", branches=[])
+        output = BranchCommitWidget(stack).render()
+        assert output == ""
+
+    def test_renders_commit_messages(self):
+        b = make_branch(
+            "feat/a", commits=2, commit_messages=["abc1234 add auth", "def5678 fix login"]
+        )
+        stack = StackView(base="main", branches=[b])
+        output = BranchCommitWidget(stack).render()
+        assert "add auth" in output
+        assert "fix login" in output
+
+    def test_renders_branch_name_header(self):
+        b = make_branch("feat/auth", commits=1, commit_messages=["abc1234 initial commit"])
+        stack = StackView(base="main", branches=[b])
+        output = BranchCommitWidget(stack).render()
+        assert "feat/auth" in output
+
+    def test_renders_no_commits_hint(self):
+        b = make_branch("feat/a", commits=0, commit_messages=[])
+        stack = StackView(base="main", branches=[b])
+        output = BranchCommitWidget(stack).render()
+        assert "no commits" in output.lower() or "add commits" in output.lower()
+
+
+class TestLoadTheme:
+    def test_returns_requested_theme(self, tmp_path):
+        theme, warn = load_theme(tmp_path, override="dracula")
+        assert theme.name == "dracula"
+        assert warn is None
+
+    def test_warns_on_unknown_theme(self, tmp_path):
+        theme, warn = load_theme(tmp_path, override="nonexistent")
+        assert theme.name == "arc"
+        assert warn is not None
+        assert "nonexistent" in warn
+        assert "arc" in warn  # lists available names
+
+    def test_available_names_in_warning(self, tmp_path):
+        _, warn = load_theme(tmp_path, override="bad-theme")
+        assert warn is not None
+        for name in ("arc", "dracula", "nord", "gruvbox", "catppuccin", "tokyo-night"):
+            assert name in warn
+
+    def test_falls_back_to_arc_on_no_config(self, tmp_path):
+        theme, warn = load_theme(tmp_path)
+        assert theme.name == "arc"
+        assert warn is None
