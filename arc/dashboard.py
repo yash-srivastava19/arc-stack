@@ -258,7 +258,8 @@ class ActionsBarWidget(Static):
 
     def render(self) -> str:
         def key(k: str, label: str) -> str:
-            return f"[{_GREEN}][{k}][/{_GREEN}][{_MUTED}] {label}[/{_MUTED}]"
+            # Use \[ to escape brackets so Rich doesn't interpret [s] as strikethrough etc.
+            return f"[{_GREEN}]\\[{k}][/{_GREEN}][{_MUTED}] {label}[/{_MUTED}]"
 
         keys = "  ".join(
             [
@@ -277,11 +278,14 @@ class ActionsBarWidget(Static):
 class BranchTreeWidget(Static):
     """Stack tree: one row per branch with left-accent border and status info."""
 
-    def __init__(self, stack_view: StackView, **kwargs):
+    def __init__(self, stack_view: StackView, loading: bool = False, **kwargs):
         super().__init__(**kwargs)
         self.stack_view = stack_view
+        self.loading = loading
 
     def render(self) -> str:
+        if self.loading:
+            return f"[{_DIM}]loading…[/{_DIM}]"
         if not self.stack_view.branches:
             return f"[{_DIM}]stack is empty[/{_DIM}]"
 
@@ -503,7 +507,7 @@ SummaryWidget {{
             with Vertical():
                 yield SummaryWidget(empty, loading=True, id="summary")
                 yield ActionsBarWidget(id="actions_bar")
-                yield BranchTreeWidget(empty, id="branch_tree")
+                yield BranchTreeWidget(empty, loading=True, id="branch_tree")
                 yield DetailWidget(empty, id="detail", classes="hidden")
         yield Input(placeholder="arc› ", id="cmd_input")
         yield RichLog(id="output_log", highlight=True, markup=True)
@@ -751,6 +755,7 @@ SummaryWidget {{
 
             tree = self.query_one("#branch_tree", BranchTreeWidget)
             tree.stack_view = view
+            tree.loading = self._loading
             tree.refresh()
 
             detail = self.query_one("#detail", DetailWidget)
