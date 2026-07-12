@@ -3,7 +3,9 @@
 All notable changes to arc are documented here.
 
 ---
-## [0.7.0] — 2026-07-11
+## [0.7.1] — 2026-07-12
+
+---## [0.7.0] — 2026-07-11
 
 ### Added
 - `arc tip` — maintains a local `arc-tip` branch that always tracks the stack's top, for local tooling (e.g. E2E test runners) that needs a stable branch name (#82)
