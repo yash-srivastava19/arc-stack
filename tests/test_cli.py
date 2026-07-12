@@ -977,6 +977,30 @@ def test_land_no_auto_promote_when_no_above_branches(tmp_path):
     assert promoted == [], "no mark_pr_ready when stack has no branches above"
 
 
+def test_land_exits_3_on_conflict_and_saves_state(tmp_path):
+    _write_state_with_branches(tmp_path)
+    conflict_result = MagicMock(returncode=1)
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value=None),
+        patch("arc.git.get_sha", return_value="abc"),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase_fork_point", return_value=conflict_result),
+        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.conflicted_files", return_value=["api.py"]),
+    ):
+        result = runner.invoke(cli, ["land", "feat/auth", "-f"])
+    assert result.exit_code == 3
+    assert "arc rebase --continue" in result.output
+    assert "arc land" in result.output
+    state_path = tmp_path / ".arc" / "rebase-in-progress.json"
+    assert state_path.exists()
+
+
 def test_sync_uses_fork_point_rebase(tmp_path):
     """arc sync uses git rebase --fork-point so amended parent commits don't replay."""
     _write_state(
