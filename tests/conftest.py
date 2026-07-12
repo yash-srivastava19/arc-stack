@@ -6,6 +6,21 @@ import pytest
 import vcr as vcrlib
 
 
+@pytest.fixture(autouse=True)
+def _clean_git_env(monkeypatch):
+    """Strip GIT_* env vars inherited from the pre-commit hook.
+
+    When pytest runs inside a git pre-commit hook, git sets GIT_DIR,
+    GIT_WORK_TREE, and GIT_INDEX_FILE. Every subprocess.run call inherits
+    these, causing git commands to operate on the hook's repo instead of
+    whatever repo the test is targeting. Clearing them restores normal
+    git behaviour (discovery from cwd) for all tests.
+    """
+    for key in list(os.environ.keys()):
+        if key.startswith("GIT_"):
+            monkeypatch.delenv(key, raising=False)
+
+
 @pytest.fixture
 def repo_root(tmp_path):
     """A temporary directory with a .git folder (simulates a git repo)."""
@@ -90,27 +105,20 @@ def git_repo(tmp_path):
     bare = tmp_path / "remote.git"
     work = tmp_path / "work"
 
-    # Strip GIT_* env vars so git operations inside the fixture are not affected
-    # by GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE set by the pre-commit hook
-    # environment, which would otherwise cause all git commands to operate on
-    # the hook's repo instead of the tmp fixture repo.
-    clean = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-
-    def git(*args, cwd=None, **kwargs):
-        return _sp.run(list(args), cwd=cwd, check=True, capture_output=True, env=clean, **kwargs)
-
-    git("git", "init", "--bare", str(bare))
-    git("git", "clone", str(bare), str(work))
-    git("git", "config", "user.email", "test@arc.dev", cwd=work)
-    git("git", "config", "user.name", "Arc Test", cwd=work)
+    _sp.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
+    _sp.run(["git", "clone", str(bare), str(work)], check=True, capture_output=True)
+    _sp.run(
+        ["git", "config", "user.email", "test@arc.dev"], cwd=work, check=True, capture_output=True
+    )
+    _sp.run(["git", "config", "user.name", "Arc Test"], cwd=work, check=True, capture_output=True)
     # git 2.28+ already defaults to 'main' on empty clones; ignore the error
     # when the branch already exists.
-    _sp.run(["git", "checkout", "-b", "main"], cwd=work, capture_output=True, env=clean)
+    _sp.run(["git", "checkout", "-b", "main"], cwd=work, capture_output=True)
 
     (work / "README.md").write_text("init")
-    git("git", "add", ".", cwd=work)
-    git("git", "commit", "-m", "init", cwd=work)
-    git("git", "push", "-u", "origin", "main", cwd=work)
+    _sp.run(["git", "add", "."], cwd=work, check=True, capture_output=True)
+    _sp.run(["git", "commit", "-m", "init"], cwd=work, check=True, capture_output=True)
+    _sp.run(["git", "push", "-u", "origin", "main"], cwd=work, check=True, capture_output=True)
 
     return work
 
