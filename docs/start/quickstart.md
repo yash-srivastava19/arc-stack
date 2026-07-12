@@ -1,9 +1,14 @@
+---
+sidebar_position: 3
+---
+
 # Quickstart
 
 Build your first stacked PR in five minutes.
 
-!!! note "Before you begin"
-    [Install](install.md) arc and run `arc setup` to verify your environment.
+:::note Before you begin
+[Install](install) arc and run `arc setup` to verify your environment.
+:::
 
 ---
 
@@ -81,7 +86,7 @@ arc sync            # fetch + cascade rebase
 arc push && arc submit
 ```
 
-If a conflict appears, arc pauses and tells you which files to fix. See [Syncing](../guide/syncing.md) for the full conflict workflow.
+If a conflict appears, arc pauses and tells you which files to fix. See [Syncing](../guide/syncing) for the full conflict workflow.
 
 ---
 
@@ -99,7 +104,7 @@ arc removes `feat/auth` from the stack and rebases `feat/api` and `feat/ui` onto
 
 ## Next steps
 
-- [Concepts](../guide/concepts.md) — vocabulary and mental model
-- [Syncing](../guide/syncing.md) — sync, rebase, and conflict recovery in depth
-- [Editing](../guide/editing.md) — amend a lower branch and cascade the change
-- [Command reference](../reference/commands.md) — every command and flag
+- [Concepts](../guide/concepts) — vocabulary and mental model
+- [Syncing](../guide/syncing) — sync, rebase, and conflict recovery in depth
+- [Editing](../guide/editing) — amend a lower branch and cascade the change
+- [Command reference](../reference/commands) — every command and flag

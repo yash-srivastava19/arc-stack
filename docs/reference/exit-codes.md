@@ -4,7 +4,7 @@ arc uses structured exit codes so scripts can react to specific conditions witho
 
 | Code | Name | Meaning | What to do |
 |------|------|---------|------------|
-| `0` | Success | Command completed successfully | — |
+| `0` | Success | Command completed successfully | |
 | `1` | Error | General error | Read stderr for details |
 | `2` | Not initialized | No stack found in the current repo | Run `arc init` |
 | `3` | Rebase conflict | A branch could not be rebased cleanly | Resolve conflict, then `arc rebase --continue` or `arc rebase --abort` |

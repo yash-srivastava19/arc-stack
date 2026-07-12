@@ -10,7 +10,7 @@ Push branches to remote and open pull requests.
 arc push
 ```
 
-Force-pushes all stack branches to remote in order (bottom to top). Increments each branch's revision counter. If a branch has no commits beyond its base, it is skipped.
+Force-pushes all stack branches to remote in order (bottom to top). Increments each branch's revision counter. arc skips branches with no commits beyond their base.
 
 ```bash
 arc push -n    # dry run: show what would be pushed without pushing

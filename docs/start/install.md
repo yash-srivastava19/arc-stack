@@ -1,3 +1,10 @@
+---
+sidebar_position: 2
+---
+
+import Tabs from '@theme/Tabs';
+import TabItem from '@theme/TabItem';
+
 # Install
 
 ## Requirements
@@ -10,23 +17,29 @@
 
 ## Install arc
 
-=== "macOS (Homebrew)"
+<Tabs>
+  <TabItem value="brew" label="macOS (Homebrew)" default>
 
-    ```bash
-    brew install yash-srivastava19/arc/arc-prs
-    ```
+  ```bash
+  brew install yash-srivastava19/arc/arc-prs
+  ```
 
-=== "pipx"
+  </TabItem>
+  <TabItem value="pipx" label="pipx">
 
-    ```bash
-    pipx install arc-prs
-    ```
+  ```bash
+  pipx install arc-prs
+  ```
 
-=== "uv"
+  </TabItem>
+  <TabItem value="uv" label="uv">
 
-    ```bash
-    uv tool install arc-prs
-    ```
+  ```bash
+  uv tool install arc-prs
+  ```
+
+  </TabItem>
+</Tabs>
 
 Verify your environment after installing:
 
@@ -50,29 +63,35 @@ Upgrades arc using whichever package manager installed it. Pass `--help` to see 
 
 ## Shell completions
 
-=== "bash"
+<Tabs>
+  <TabItem value="bash" label="bash" default>
 
-    Add to `~/.bashrc` or `~/.bash_profile`:
+  Add to `~/.bashrc` or `~/.bash_profile`:
 
-    ```bash
-    eval "$(arc completions bash)"
-    ```
+  ```bash
+  eval "$(arc completions bash)"
+  ```
 
-=== "zsh"
+  </TabItem>
+  <TabItem value="zsh" label="zsh">
 
-    Add to `~/.zshrc`:
+  Add to `~/.zshrc`:
 
-    ```bash
-    eval "$(arc completions zsh)"
-    ```
+  ```bash
+  eval "$(arc completions zsh)"
+  ```
 
-=== "fish"
+  </TabItem>
+  <TabItem value="fish" label="fish">
 
-    Run once, or add to `~/.config/fish/config.fish`:
+  Run once, or add to `~/.config/fish/config.fish`:
 
-    ```fish
-    arc completions fish | source
-    ```
+  ```fish
+  arc completions fish | source
+  ```
+
+  </TabItem>
+</Tabs>
 
 ---
 

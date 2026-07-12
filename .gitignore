@@ -38,3 +38,8 @@ docs/_build/
 # VCR cassettes — masked for PII, safe to commit for test reproducibility
 # (recorded API interactions with automatic token/email masking)
 site/
+
+# Docusaurus
+node_modules/
+.docusaurus/
+build/

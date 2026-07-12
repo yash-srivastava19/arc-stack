@@ -51,7 +51,7 @@ A **cascade rebase** rebases each branch in the stack onto the one below it, sta
 2. Rebase `feat/api` onto `feat/auth` (as it now is)
 3. Rebase `feat/ui` onto `feat/api` (as it now is)
 
-This is what `arc sync` runs. If a conflict occurs at step 2, arc pauses — the branches that already rebased stay in place, the conflicting branch is left mid-rebase. After you resolve and run `arc rebase --continue`, arc picks up at step 2 and continues through the rest.
+This is what `arc sync` runs. If a conflict occurs at step 2, arc pauses. The branches that already rebased stay in place; the conflicting branch is left mid-rebase. After you resolve and run `arc rebase --continue`, arc picks up at step 2 and continues through the rest.
 
 ---
 

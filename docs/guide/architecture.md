@@ -1,6 +1,6 @@
 # Architecture
 
-How arc is built, and why the key decisions were made the way they were.
+How arc is built and why the design choices landed where they did.
 
 ---
 
@@ -65,9 +65,9 @@ Stack shape is a property of a developer's working session, not the codebase. Tw
 
 arc shells out to `git` and `gh` rather than using libgit2, pygit2, or the GitHub REST/GraphQL API directly.
 
-**For git:** `git rebase`, `git merge`, and conflict resolution are complex behaviors with decades of edge-case handling baked into the `git` binary. libgit2 does not expose the full rebase machinery. Shelling out gets the real behavior, including rerere replay, hooks, and `.git/rebase-merge` state that `arc rebase --continue` relies on.
+For `git`: `git rebase`, `git merge`, and conflict resolution are complex behaviors with decades of edge-case handling baked into the `git` binary. libgit2 does not expose the full rebase machinery. Shelling out gets the real behavior, including rerere replay, hooks, and `.git/rebase-merge` state that `arc rebase --continue` relies on.
 
-**For GitHub:** The `gh` CLI handles authentication, token refresh, and most API quirks. arc doesn't need to manage OAuth flows or store credentials — that's `gh`'s job. This also means arc works wherever `gh` works (GitHub.com, GitHub Enterprise Server with the right `GH_HOST`).
+For `gh`: The `gh` CLI handles authentication, token refresh, and most API quirks. arc doesn't manage OAuth flows or store credentials; that's `gh`'s job. This also means arc works wherever `gh` works (GitHub.com, GitHub Enterprise Server with the right `GH_HOST`).
 
 ---
 
@@ -120,7 +120,7 @@ When GitHub squash-merges a PR, it creates one new commit on `main` that doesn't
 
 ## Hooks: stdlib only
 
-`arc/hooks.py` intentionally uses only the Python standard library. No Click, no Rich. This keeps hooks extractable — the module can be copied into a different project without bringing arc's dependencies.
+`arc/hooks.py` uses only the Python standard library. It does not depend on Click or Rich, so the module can be copied into another project without pulling in arc's dependencies.
 
 Hooks receive context via environment variables (always available in shell scripts) and a JSON blob on stdin (available in any language that can read stdin). The JSON-on-stdin pattern was chosen over command-line arguments because it scales to arbitrary data without flag combinatorial explosion.
 
