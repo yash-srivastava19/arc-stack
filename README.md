@@ -5,15 +5,20 @@
 
 # arc
 
-Your PR has 47 files changed. Nobody's going to review that.
+Stacked PRs without the manual overhead.
 
-Stacked PRs fix this — break a large change into a chain of small, focused diffs that reviewers can actually follow. The problem is that managing a stack by hand is painful. Every time `main` moves, you cascade rebases through four branches manually. Every merged PR means retargeting the one above it. So you skip the stacking and ship the monster PR anyway.
-
-`arc` removes that friction.
+`arc` keeps a branch stack current, opens the PRs for each layer, and restacks
+the branches above when one merges.
 
 ![arc demo](assets/demo.gif)
 
-One command keeps the whole stack current. Another opens all the PRs — with a stack map in each description so reviewers can navigate. When a PR merges, `arc land` rebases everything above it and removes it from the stack.
+## Status
+
+- Version: `0.7.1`
+- Python: `3.11` to `3.13`
+- CI: GitHub Actions
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Security: [SECURITY.md](SECURITY.md)
 
 **What arc handles for you:**
 - Cascade rebases — one `arc sync` propagates a change from the bottom branch to the top
@@ -44,6 +49,20 @@ First time on a new machine:
 
 ```bash
 arc setup   # checks git, gh auth, and configures git rerere
+```
+
+To upgrade later:
+
+```bash
+arc upgrade
+```
+
+**Shell completions** (optional):
+
+```bash
+eval "$(arc completions bash)"   # bash
+eval "$(arc completions zsh)"    # zsh
+arc completions fish | source    # fish
 ```
 
 ---
@@ -201,6 +220,27 @@ arc push -n    # shows which branches would be pushed
 arc land -n    # shows which branches would be restacked
 ```
 
+**Interactive dashboard** — view all PRs, CI status, and review state in one place:
+
+```bash
+arc dashboard
+```
+
+**Read and write configuration:**
+
+```bash
+arc config list
+arc config get feedback.enabled
+arc config set feedback.enabled false
+```
+
+**Report a bug or send feedback** directly from the terminal:
+
+```bash
+arc report --bug      # opens a prefilled GitHub issue in arc's repo
+arc report --feedback
+```
+
 ---
 
 ## Scripting and agents
@@ -282,6 +322,12 @@ All commands accept `-q` (`--quiet`) to suppress hints and `-n` (`--dry-run`) wh
 | `arc top` / `arc bottom` | Jump to ends of the stack |
 | `arc tip` | Create/update a local `arc-tip` branch pointing at the stack's top and check it out |
 | `arc stack analyze [--json]` | Show critical path, safe-to-land branches, and blockers |
+| `arc dashboard` | Interactive TUI: all PRs, CI status, review state in one view |
+| `arc config get\|set\|list` | Read and write arc configuration values |
+| `arc report [--bug\|--feedback]` | File a bug or feedback issue in arc's GitHub repo |
+| `arc schema {status\|submit\|analyze}` | Print JSON Schema for a command's `--json` output |
+| `arc upgrade` | Upgrade arc to the latest version |
+| `arc completions {bash\|zsh\|fish}` | Print shell completion script |
 | `arc doctor` | Check environment: git, gh, auth, stack validity |
 
 ---
