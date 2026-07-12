@@ -1,0 +1,92 @@
+site_name: arc
+site_description: Stacked PRs without the manual overhead
+site_url: https://arc-stack.readthedocs.io
+repo_url: https://github.com/yash-srivastava19/arc-stack
+repo_name: yash-srivastava19/arc-stack
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.tabs.link
+    - content.action.edit
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+exclude_docs: |
+  superpowers/
+  developer/
+  features/
+  BACKLOG.md
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting started:
+    - Install: start/install.md
+    - Quickstart: start/quickstart.md
+  - Guide:
+    - Concepts: guide/concepts.md
+    - Stacking: guide/stacking.md
+    - Syncing: guide/syncing.md
+    - Submitting: guide/submitting.md
+    - Landing: guide/landing.md
+    - Editing: guide/editing.md
+    - Hooks: guide/hooks.md
+    - Scripting: guide/scripting.md
+    - Architecture: guide/architecture.md
+  - Reference:
+    - Commands: reference/commands.md
+    - Configuration: reference/config.md
+    - Hooks: reference/hooks.md
+    - Exit codes: reference/exit-codes.md
+    - JSON output: reference/json-output.md
