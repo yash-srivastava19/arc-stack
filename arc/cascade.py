@@ -114,7 +114,10 @@ def _run_from(
         if not quiet:
             err.print(f"Rebasing {branch} onto {onto}...")
         git.checkout(branch)
-        result = git.rebase_fork_point(onto)
+        old_base = step.get("old_base")
+        result = (
+            git.rebase_onto(onto, old_base, branch) if old_base else git.rebase_fork_point(onto)
+        )
         if result.returncode != 0:
             if not git.is_mid_rebase(root):
                 _rollback(pre_shas)
