@@ -127,7 +127,7 @@ arc land feat/auth
 
 `arc` verifies the PR is merged, detects whether it was a squash-merge or a regular merge, rebases `feat/api` and `feat/ui` onto `main` correctly (using `git rebase --onto` for squash-merges, which would otherwise leave duplicate commits), removes `feat/auth` from the stack, and deletes the local branch.
 
-You can land branches in order as they get approved. The rest of the stack stays coherent throughout.
+You can land branches in order as they get approved. The rest of the stack stays coherent throughout. If restacking hits a conflict, `arc land` pauses the same way `arc sync` does — resolve it, run `arc rebase --continue`, then re-run `arc land feat/auth -f` to finish (`arc drop` works the same way).
 
 ---
 
@@ -140,6 +140,15 @@ arc checkout feat/auth   # or: arc checkout 1
 # fix the issue, amend your commit
 arc sync                 # cascades the change up through api and ui
 arc push && arc submit
+```
+
+Or do it in one step with `arc edit`, which amends the branch's commit and
+cascades the rest of the stack automatically (with the same pause/resume-on-
+conflict safety as `arc sync`):
+
+```bash
+git add src/auth.py
+arc edit feat/auth       # amends HEAD, restacks api and ui, force-pushes
 ```
 
 `arc checkout 2` navigates to the second branch in the stack. `arc up` / `arc down` / `arc top` / `arc bottom` move you through the stack without remembering branch names.
@@ -265,6 +274,7 @@ All commands accept `-q` (`--quiet`) to suppress hints and `-n` (`--dry-run`) wh
 | `arc submit [--draft\|--open] [--skip-hooks]` | Create or update PRs |
 | `arc land [<branch>] [-f]` | Land a merged PR, restack above |
 | `arc amend` | Append PR link to commit message |
+| `arc edit [<branch>]` | Amend a branch's commit and auto-cascade the rest of the stack |
 | `arc drop <branch> [-f]` | Remove branch, restack above |
 | `arc rebase [--upstack\|--downstack\|--continue\|--abort]` | Fine-grained rebase |
 | `arc checkout <name\|index>` | Switch to branch by name or position |
