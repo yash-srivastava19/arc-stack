@@ -11,7 +11,11 @@ body = """
 {% endfor %}
 ---
 """
-trim = true
+# trim=true strips the body's leading/trailing blank lines, which breaks
+# the separator between --prepend'd entries on the second+ release (the new
+# entry's trailing "---" glues directly onto the previous entry's heading
+# with no blank line, since that previous entry was itself trimmed).
+trim = false
 postprocessors = []
 
 [git]
