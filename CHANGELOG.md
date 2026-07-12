@@ -3,6 +3,16 @@
 All notable changes to arc are documented here.
 
 ---
+
+## [0.7.1] — 2026-07-12
+
+### Fixed
+- `arc drop`/`arc land` gained the same conflict-safety as `arc sync`/`arc rebase` — pause + resume on a real conflict, full rollback on abort, instead of an unsafe bare rebase loop (#87)
+- `arc restack` hints `arc edit` (amend + auto-cascade the whole stack in one step) when more branches need restacking (#87)
+- A sync resumed via `arc rebase --continue` now fires the `post-sync` hook and periodic hint, matching an uninterrupted `arc sync` (#87)
+
+---
+
 ## [0.7.0] — 2026-07-11
 
 ### Added
