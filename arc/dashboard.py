@@ -9,7 +9,8 @@ from pathlib import Path
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import ScrollableContainer, Vertical
+from textual.containers import Horizontal, ScrollableContainer, Vertical
+from textual.screen import ModalScreen
 from textual.widgets import Input, RichLog, Static
 from textual.worker import Worker
 
@@ -24,7 +25,8 @@ from arc.exceptions import NotInitializedError
 class DashboardTheme:
     """Color palette for the dashboard.
 
-    Select a theme with:  arc config set dashboard.theme <name>
+    Select via CLI:  arc dashboard --theme dracula
+    Set as default:  arc config set dashboard.theme dracula
     Available names: arc, dracula, nord, gruvbox, catppuccin, tokyo-night
     """
 
@@ -139,13 +141,13 @@ THEMES: dict[str, DashboardTheme] = {
 DEFAULT_THEME = "arc"
 
 # Active theme — set by DashboardApp.__init__ before compose() fires.
-# All widget render() methods read from _T so they automatically pick up
-# whatever theme was loaded for this session.
 _T: DashboardTheme = THEMES[DEFAULT_THEME]
 
 
-def load_theme(root: Path) -> DashboardTheme:
-    """Load theme from arc config (dashboard.theme), falling back to 'arc'."""
+def load_theme(root: Path, override: str | None = None) -> DashboardTheme:
+    """Load theme from CLI override, then config, then fall back to 'arc'."""
+    if override:
+        return THEMES.get(override, THEMES[DEFAULT_THEME])
     try:
         cfg = st.load_config(root)
         name = cfg.get("dashboard", {}).get("theme", DEFAULT_THEME)
@@ -236,16 +238,28 @@ class StackView:
                 return i
         return None
 
+    @property
+    def branches_needing_rebase(self) -> int:
+        return sum(1 for b in self.branches if b.commits == 0 and b.pr_number)
+
+    @property
+    def open_prs(self) -> int:
+        return sum(1 for b in self.branches if b.pr_number and not b.draft)
+
+    @property
+    def ready_to_land(self) -> BranchStatus | None:
+        # Bottom-most approved branch with no blockers
+        for b in self.branches:
+            if b.approved and not b.blocker_reason:
+                return b
+        return None
+
 
 # ── State loader ─────────────────────────────────────────────────────────────
 
 
 def load_local_stack_view(root: Path) -> StackView:
-    """Load stack state from local sources only (no network).
-
-    Reads .arc/state.json and git commit counts. Fast — called first so
-    the UI can render the branch tree while PR status fetches in the background.
-    """
+    """Load stack state from local sources only (no network). Fast."""
     try:
         current_git_branch = git.current_branch()
     except Exception:
@@ -348,7 +362,7 @@ class TitleBarWidget(Static):
 
 
 class SummaryWidget(Static):
-    """Stack summary: $ arc status + branch/PR counts."""
+    """$ arc status summary line."""
 
     def __init__(self, stack_view: StackView, loading: bool = False, **kwargs):
         super().__init__(**kwargs)
@@ -366,33 +380,37 @@ class SummaryWidget(Static):
             )
 
         n = len(self.stack_view.branches)
-        prs = sum(1 for b in self.stack_view.branches if b.pr_number)
+        prs = self.stack_view.open_prs
         approved = sum(1 for b in self.stack_view.branches if b.approved)
+        needs_rebase = self.stack_view.branches_needing_rebase
+        ready = self.stack_view.ready_to_land
 
         parts = [
             f"[{t.bright}]{self.stack_view.base}[/{t.bright}]",
             f"[{t.dim}]{n} branch{'es' if n != 1 else ''}[/{t.dim}]",
         ]
         if prs:
-            parts.append(f"[{t.blue}]{prs} PR{'s' if prs != 1 else ''}[/{t.blue}]")
+            parts.append(f"[{t.blue}]{prs} open PR{'s' if prs != 1 else ''}[/{t.blue}]")
         if approved:
             parts.append(f"[{t.green}]{approved} approved[/{t.green}]")
+        if needs_rebase:
+            parts.append(f"[{t.yellow}]{needs_rebase} need rebase[/{t.yellow}]")
+        if ready:
+            parts.append(f"[{t.green}]{ready.name} ready to land[/{t.green}]")
         if not self.stack_view.branches:
-            parts.append(f"[{t.dim}]run arc new <branch> to add branches[/{t.dim}]")
+            parts.append(f"[{t.dim}]run arc new <branch> to start[/{t.dim}]")
 
         header = f"[{t.muted}]$ arc status[/{t.muted}]"
-        summary = "  ".join(parts)
-        return f"{header}\n{summary}"
+        return f"{header}\n{'  '.join(parts)}"
 
 
 class ActionsBarWidget(Static):
-    """Keyboard shortcuts bar."""
+    """Top-level keyboard shortcuts bar (above the tree)."""
 
     def render(self) -> str:
         t = _T
 
         def key(k: str, label: str) -> str:
-            # Use \[ to escape brackets so Rich doesn't interpret [s] as strikethrough etc.
             return f"[{t.green}]\\[{k}][/{t.green}][{t.muted}] {label}[/{t.muted}]"
 
         return "  ".join(
@@ -400,8 +418,9 @@ class ActionsBarWidget(Static):
                 key("s", "sync"),
                 key("p", "push"),
                 key("l", "land"),
-                key("r", "restack"),
-                key("o", "open PR"),
+                key("c", "checkout"),
+                key("n", "new"),
+                key("a", "analyze"),
                 key("R", "refresh"),
                 key("q", "quit"),
             ]
@@ -409,7 +428,7 @@ class ActionsBarWidget(Static):
 
 
 class BranchTreeWidget(Static):
-    """Stack tree: one row per branch with left-accent border and status info."""
+    """Indented stack tree — each branch indented under its parent."""
 
     def __init__(self, stack_view: StackView, loading: bool = False, **kwargs):
         super().__init__(**kwargs)
@@ -421,7 +440,7 @@ class BranchTreeWidget(Static):
         if self.loading:
             return f"[{t.dim}]loading…[/{t.dim}]"
         if not self.stack_view.branches:
-            return f"[{t.dim}]stack is empty[/{t.dim}]"
+            return f"[{t.dim}]stack is empty — run arc new <branch>[/{t.dim}]"
 
         base = self.stack_view.base
         n = len(self.stack_view.branches)
@@ -431,47 +450,61 @@ class BranchTreeWidget(Static):
             is_selected = i == self.stack_view.current_index
             is_head = branch.name == self.stack_view.current_git_branch
 
-            connector = "└─" if i == n - 1 else "├─"
+            # Indentation: each level adds 3 spaces
+            indent = "   " * i
+            connector = "└──" if i == n - 1 else "├──"
             accent = branch.row_accent(t)
             sc = branch.status_color(t)
 
             bar = f"[{accent}]┃[/{accent}]"
-            cursor = f"[bold {t.green}]▶[/bold {t.green}] " if is_selected else "  "
-            name = (
-                f"[bold {t.bright}]{branch.name}[/bold {t.bright}]"
-                if is_head
-                else f"[{t.fg}]{branch.name}[/{t.fg}]"
-            )
+            cursor = f"[bold {t.green}]▶[/bold {t.green}]" if is_selected else " "
+
+            name_style = f"bold {t.bright}" if is_head else t.fg
+            name = f"[{name_style}]{branch.name}[/{name_style}]"
+
             pr_label = (
                 f"[{t.blue}]#{branch.pr_number}[/{t.blue}]"
                 if branch.pr_number
-                else f"[{t.dim}]--[/{t.dim}]"
+                else f"[{t.dim}]no PR[/{t.dim}]"
             )
+            # show draft/open status when there's a PR
+            if branch.pr_number and branch.draft:
+                pr_label += f" [{t.dim}]draft[/{t.dim}]"
+            elif branch.pr_number and not branch.draft and not branch.approved:
+                pr_label += f" [{t.dim}]open[/{t.dim}]"
+
             icon = f"[{sc}]{branch.status_icon}[/{sc}]"
             meta = f"[{t.dim}]{branch.commits}c  (rev {branch.revision})[/{t.dim}]"
-            head_marker = f"  [{t.bright}]◀ HEAD[/{t.bright}]" if is_head else ""
+            head_marker = f"[{t.bright}]◀ HEAD[/{t.bright}]" if is_head else ""
             blocker = (
-                f"  [{t.yellow}]{branch.blocker_reason}[/{t.yellow}]"
-                if branch.blocker_reason and is_selected
-                else ""
+                f"[{t.yellow}]{branch.blocker_reason}[/{t.yellow}]" if branch.blocker_reason else ""
             )
 
-            lines.append(
-                f"{cursor}[{t.dim}]{connector}[/{t.dim}] {bar} {name}  {pr_label}  {icon}  {meta}{head_marker}{blocker}"
-            )
+            parts = [p for p in [name, pr_label, icon, meta, head_marker, blocker] if p]
+            row = f"{indent}[{t.dim}]{connector}[/{t.dim}] {bar} {cursor} {'  '.join(parts)}"
+            lines.append(row)
 
+        # Warn when on a branch not in the stack
         cgb = self.stack_view.current_git_branch
         if cgb and self.stack_view.index_of(cgb) is None and cgb != base:
             lines.append(
-                f"\n[{t.yellow}]⚠ current branch [{t.bright}]{cgb}[/{t.bright}] not in stack[/{t.yellow}]"
-                f"\n[{t.dim}]→ run arc add {cgb}[/{t.dim}]"
+                f"\n[{t.yellow}]⚠  [{t.bright}]{cgb}[/{t.bright}] is not in the stack[/{t.yellow}]"
+                f"\n[{t.dim}]   run arc add {cgb} to include it[/{t.dim}]"
+            )
+
+        # Rebase hint
+        needs_rebase = self.stack_view.branches_needing_rebase
+        if needs_rebase:
+            lines.append(
+                f"\n[{t.dim}]→ Run 'arc sync' to rebase {needs_rebase} "
+                f"branch{'es' if needs_rebase != 1 else ''}.[/{t.dim}]"
             )
 
         return "\n".join(lines)
 
 
 class DetailWidget(Static):
-    """Inline detail panel for the selected branch (like `arc show`)."""
+    """Branch detail panel — $ arc show <branch>."""
 
     def __init__(self, stack_view: StackView, **kwargs):
         super().__init__(**kwargs)
@@ -481,7 +514,7 @@ class DetailWidget(Static):
         t = _T
         current = self.stack_view.current_branch
         if not current:
-            return ""
+            return f"[{t.dim}]select a branch to see details[/{t.dim}]"
 
         lines: list[str] = []
         lines.append(f"[{t.muted}]$ arc show {current.name}[/{t.muted}]")
@@ -489,7 +522,8 @@ class DetailWidget(Static):
         lines.append(f"[{t.dim}]base   [/{t.dim}][{t.fg}]{current.base}[/{t.fg}]")
         commit_word = "commit" if current.commits == 1 else "commits"
         lines.append(
-            f"[{t.dim}]commits[/{t.dim}] [{t.fg}]{current.commits} {commit_word}[/{t.fg}]  [{t.dim}]rev {current.revision}[/{t.dim}]"
+            f"[{t.dim}]commits[/{t.dim}] [{t.fg}]{current.commits} {commit_word}[/{t.fg}]"
+            f"  [{t.dim}]rev {current.revision}[/{t.dim}]"
         )
 
         if current.pr_number:
@@ -521,7 +555,94 @@ class DetailWidget(Static):
         return "\n".join(lines)
 
 
-# ── App ───────────────────────────────────────────────────────────────────────
+class StatusBarWidget(Static):
+    """Bottom status bar with key hints."""
+
+    def render(self) -> str:
+        t = _T
+
+        def key(k: str, label: str) -> str:
+            return f"[bold {t.green}]{k}[/bold {t.green}][{t.dim}] {label}[/{t.dim}]"
+
+        parts = [
+            key("j/k", "nav"),
+            key("enter", "select"),
+            key("c", "checkout"),
+            key("s", "sync"),
+            key("p", "push"),
+            key("l", "land"),
+            key("n", "new"),
+            key("a", "analyze"),
+            key("?", "help"),
+            key("q", "quit"),
+        ]
+        right = f"[{t.dim}]arc {_arc_version()}  ·  {_T.name}[/{t.dim}]"
+        return "  ".join(parts) + f"  {right}"
+
+
+def _arc_version() -> str:
+    try:
+        from arc import __version__
+
+        return __version__
+    except Exception:
+        return "?"
+
+
+class HelpScreen(ModalScreen):
+    """? key — keybinding reference overlay."""
+
+    BINDINGS = [("escape,q,?", "dismiss", "close")]
+
+    def compose(self) -> ComposeResult:
+        t = _T
+
+        def row(k: str, desc: str) -> str:
+            return f"  [{t.green}]{k:<14}[/{t.green}][{t.fg}]{desc}[/{t.fg}]"
+
+        lines = [
+            f"[bold {t.bright}]arc dashboard — keyboard reference[/bold {t.bright}]",
+            "",
+            f"[{t.muted}]Navigation[/{t.muted}]",
+            row("j / k / ↑ / ↓", "move selection up/down"),
+            row("enter", "show/hide branch detail"),
+            "",
+            f"[{t.muted}]Stack operations[/{t.muted}]",
+            row("s", "arc sync (rebase stack)"),
+            row("p", "arc push (update PRs)"),
+            row("l", "arc land (merge selected)"),
+            row("r", "arc restack (rebase selected)"),
+            row("n", "arc new <name> (new branch)"),
+            row("a", "arc stack analyze"),
+            row("c", "git checkout selected branch"),
+            row("o", "open PR in browser"),
+            row("R", "refresh dashboard"),
+            "",
+            f"[{t.muted}]Input[/{t.muted}]",
+            row("Tab / click", "focus arc› command input"),
+            row("Escape", "unfocus input / close help"),
+            row("q", "quit"),
+            "",
+            f"[{t.dim}]Themes: arc, dracula, nord, gruvbox, catppuccin, tokyo-night[/{t.dim}]",
+            f"[{t.dim}]arc dashboard --theme <name>   or   arc config set dashboard.theme <name>[/{t.dim}]",
+            "",
+            f"[{t.dim}]Press Escape, q, or ? to close[/{t.dim}]",
+        ]
+        yield Static("\n".join(lines), id="help_content")
+
+    CSS = """
+HelpScreen {
+    align: center middle;
+}
+#help_content {
+    padding: 2 4;
+    width: 64;
+    border: tall #1e211a;
+}
+"""
+
+
+# ── App CSS builder ──────────────────────────────────────────────────────────
 
 
 def _build_css(t: DashboardTheme) -> str:
@@ -539,7 +660,29 @@ Screen {{
     border-bottom: tall {t.border};
 }}
 
-#scroll_area {{
+#main_area {{
+    height: 1fr;
+}}
+
+#left_col {{
+    width: 60%;
+    background: {t.bg};
+    border-right: tall {t.border};
+}}
+
+#summary {{
+    height: auto;
+    padding: 1 2 0 2;
+}}
+
+#actions_bar {{
+    height: 1;
+    padding: 0 2;
+    margin-top: 1;
+    color: {t.muted};
+}}
+
+#tree_scroll {{
     height: 1fr;
     background: {t.bg};
     scrollbar-color: {t.track} {t.bg};
@@ -547,60 +690,62 @@ Screen {{
     padding: 1 2;
 }}
 
-SummaryWidget {{
-    margin-bottom: 1;
-    padding: 0;
-}}
-
-#actions_bar {{
-    height: 1;
-    margin-bottom: 1;
-    color: {t.muted};
-    padding: 0;
-}}
-
-#branch_tree {{
-    padding: 0;
-    margin-bottom: 1;
+#right_col {{
+    width: 40%;
+    background: {t.bg};
 }}
 
 #detail {{
-    padding: 1;
-    margin-bottom: 1;
-    border: tall {t.border};
+    height: 1fr;
+    padding: 1 2;
+    border-bottom: tall {t.border};
 }}
 
-#detail.hidden {{
-    display: none;
+#output_log {{
+    height: 1fr;
+    background: {t.bg};
+    scrollbar-color: {t.track} {t.bg};
+    scrollbar-size: 1 1;
+    padding: 0 1;
 }}
 
 #cmd_input {{
     height: 3;
     background: {t.bg};
-    border: tall {t.border};
+    border-top: tall {t.border};
+    border-bottom: tall {t.border};
     color: {t.bright};
     padding: 0 1;
 }}
 
 #cmd_input:focus {{
-    border: tall {t.green};
+    border-top: tall {t.green};
+    border-bottom: tall {t.green};
 }}
 
-#output_log {{
-    height: 8;
+#status_bar {{
+    height: 1;
+    background: {t.bg};
+    color: {t.dim};
+    padding: 0 1;
+    border-top: tall {t.border};
+}}
+
+HelpScreen #help_content {{
     background: {t.bg};
     border: tall {t.border};
-    scrollbar-color: {t.track} {t.bg};
-    scrollbar-size: 1 1;
-    padding: 0 1;
+    color: {t.fg};
 }}
 """
+
+
+# ── App ───────────────────────────────────────────────────────────────────────
 
 
 class DashboardApp(App):
     """Interactive dashboard for arc stacked PRs."""
 
-    CSS = _build_css(THEMES[DEFAULT_THEME])  # overwritten in __init__ with the active theme
+    CSS = _build_css(THEMES[DEFAULT_THEME])
 
     BINDINGS = [
         Binding("up,k", "move_up", "Up", show=False),
@@ -612,15 +757,15 @@ class DashboardApp(App):
         Binding("r", "cmd_restack", "restack", show=False),
         Binding("o", "open_pr", "open PR", show=False),
         Binding("R", "refresh", "refresh", show=False),
+        Binding("n", "cmd_new", "new branch", show=False),
+        Binding("a", "cmd_analyze", "analyze", show=False),
+        Binding("c", "cmd_checkout", "checkout", show=False),
     ]
 
     TITLE = "arc dashboard"
     ENABLE_COMMAND_PALETTE = False
 
     def __init__(self, root: Path, theme: DashboardTheme | None = None):
-        # Set the module-level active theme BEFORE super().__init__ so all
-        # widget render() calls see the right palette from the start.
-        # Also update the class-level CSS so Textual picks up the theme colors.
         global _T
         _T = theme or THEMES[DEFAULT_THEME]
         DashboardApp.CSS = _build_css(_T)
@@ -628,38 +773,40 @@ class DashboardApp(App):
         self.root = root
         self.stack_view: StackView | None = None
         self._loading = True
-        self._detail_open = False
 
     def compose(self) -> ComposeResult:
         empty = StackView(base="…", branches=[])
         yield TitleBarWidget(id="title_bar")
-        with ScrollableContainer(id="scroll_area"):
-            with Vertical():
+        with Horizontal(id="main_area"):
+            with Vertical(id="left_col"):
                 yield SummaryWidget(empty, loading=True, id="summary")
                 yield ActionsBarWidget(id="actions_bar")
-                yield BranchTreeWidget(empty, loading=True, id="branch_tree")
-                yield DetailWidget(empty, id="detail", classes="hidden")
+                with ScrollableContainer(id="tree_scroll"):
+                    yield BranchTreeWidget(empty, loading=True, id="branch_tree")
+            with Vertical(id="right_col"):
+                yield DetailWidget(empty, id="detail")
+                yield RichLog(id="output_log", highlight=True, markup=True)
         yield Input(placeholder="arc› ", id="cmd_input")
-        yield RichLog(id="output_log", highlight=True, markup=True)
+        yield StatusBarWidget(id="status_bar")
 
     def on_mount(self) -> None:
-        # Start unfocused so browse-mode keys (q, j/k, s, p…) work immediately.
-        # The user focuses the input explicitly by clicking it or pressing Tab.
         self.query_one("#cmd_input", Input).blur()
         self.set_focus(None)
         self._load_state_async()
         self.start_polling()
-        self._emit(f"[{_T.muted}]arc dashboard — use ↑↓ to navigate, enter to expand[/{_T.muted}]")
+        self._emit(
+            f"[{_T.muted}]arc dashboard ready — use ↑↓/j/k to navigate, ? for help[/{_T.muted}]"
+        )
+
+    # ── Loading ─────────────────────────────────────────────────────────────
 
     @work(thread=True, exit_on_error=False, exclusive=True)
     def _load_state_worker(self) -> None:
-        """Two-phase load: local state first (fast), then GitHub per-branch (slow)."""
+        """Two-phase: local state first (instant), then GitHub PR status (per-branch)."""
         try:
-            # Phase 1 — instant: read state.json + git commit counts, no network
             stack = load_local_stack_view(self.root)
             self.call_from_thread(self._on_local_load, stack)
 
-            # Phase 2 — slow: fetch GitHub PR status one branch at a time
             for branch in stack.branches:
                 if branch.pr_number:
                     try:
@@ -682,22 +829,19 @@ class DashboardApp(App):
             self.call_from_thread(self._on_load_done)
 
     def _on_local_load(self, stack: StackView) -> None:
-        """Called from thread after fast local load — show branch tree immediately."""
         self.stack_view = stack
         self._refresh_all()
 
     def _on_load_done(self) -> None:
-        """Called from thread when all (including GitHub) fetches are complete."""
         self._loading = False
         self._refresh_all()
 
     def _refresh_content(self) -> None:
-        """Lightweight refresh called after each per-branch PR status fetch."""
         self._refresh_tree()
         self._refresh_detail()
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        pass  # all updates driven by call_from_thread inside the worker
+        pass
 
     def _load_state_async(self) -> None:
         self._loading = True
@@ -709,32 +853,26 @@ class DashboardApp(App):
             await asyncio.sleep(30)
             self._load_state_async()
 
-    # ── Navigation ─────────────────────────────────────────────────────────
+    # ── Navigation ──────────────────────────────────────────────────────────
 
     def action_move_up(self) -> None:
         if self.stack_view:
             self.stack_view.move_selection(-1)
-            if self._detail_open:
-                self._refresh_detail()
             self._refresh_tree()
+            self._refresh_detail()
 
     def action_move_down(self) -> None:
         if self.stack_view:
             self.stack_view.move_selection(1)
-            if self._detail_open:
-                self._refresh_detail()
             self._refresh_tree()
+            self._refresh_detail()
 
     def action_toggle_detail(self) -> None:
-        self._detail_open = not self._detail_open
-        detail = self.query_one("#detail", DetailWidget)
-        if self._detail_open:
-            detail.remove_class("hidden")
-        else:
-            detail.add_class("hidden")
+        # In the two-column layout the detail panel is always visible;
+        # Enter now scrolls the tree to the selected row instead.
         self._refresh_detail()
 
-    # ── Arc commands ────────────────────────────────────────────────────────
+    # ── Stack commands ───────────────────────────────────────────────────────
 
     def action_cmd_sync(self) -> None:
         self._run_arc("sync")
@@ -754,6 +892,24 @@ class DashboardApp(App):
         else:
             self._emit(f"[{_T.red}]no branch selected[/{_T.red}]")
 
+    def action_cmd_new(self) -> None:
+        """Focus the input pre-filled with 'new ' so user can type the branch name."""
+        inp = self.query_one("#cmd_input", Input)
+        inp.value = "new "
+        inp.focus()
+        inp.cursor_position = len(inp.value)
+
+    def action_cmd_analyze(self) -> None:
+        self._run_arc_raw(["arc", "stack", "analyze"])
+
+    def action_cmd_checkout(self) -> None:
+        if not self.stack_view or not self.stack_view.current_branch:
+            self._emit(f"[{_T.yellow}]no branch selected[/{_T.yellow}]")
+            return
+        branch = self.stack_view.current_branch.name
+        self._emit(f"[{_T.muted}]$ git checkout {branch}[/{_T.muted}]")
+        self._checkout_worker(branch)
+
     def action_open_pr(self) -> None:
         if not self.stack_view or not self.stack_view.current_branch:
             self._emit(f"[{_T.yellow}]no branch selected[/{_T.yellow}]")
@@ -772,29 +928,35 @@ class DashboardApp(App):
         self._emit(f"[{_T.muted}]refreshing…[/{_T.muted}]")
         self._load_state_async()
 
+    # ── Keys ─────────────────────────────────────────────────────────────────
+
     def on_key(self, event) -> None:  # type: ignore[override]
-        # Handle q and Escape directly so they fire even when no widget is focused.
-        # We skip q when the Input is focused (user might be typing a command).
         input_focused = isinstance(self.focused, Input)
         if event.key == "q" and not input_focused:
             event.stop()
             self.exit()
+        elif event.key == "question_mark" and not input_focused:
+            event.stop()
+            self.push_screen(HelpScreen())
         elif event.key == "escape" and input_focused:
             event.stop()
             self.query_one("#cmd_input", Input).blur()
             self.set_focus(None)
 
-    # ── Input command handling ───────────────────────────────────────────────
+    # ── Input handler ────────────────────────────────────────────────────────
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         cmd = event.value.strip()
         event.input.clear()
+        event.input.blur()
+        self.set_focus(None)
         if not cmd:
             return
         self._emit(f"[{_T.muted}]arc› {cmd}[/{_T.muted}]")
         parts = cmd.split()
         verb = parts[0] if parts else ""
         arg = parts[1] if len(parts) > 1 else ""
+
         if verb in ("sync", "s"):
             self._run_arc("sync")
         elif verb in ("push", "p"):
@@ -819,51 +981,103 @@ class DashboardApp(App):
                 self._run_arc("restack", branch)
             else:
                 self._emit(f"[{_T.yellow}]usage: restack <branch>[/{_T.yellow}]")
+        elif verb in ("new", "n"):
+            if arg:
+                self._run_arc("new", arg)
+            else:
+                self._emit(f"[{_T.yellow}]usage: new <branch-name>[/{_T.yellow}]")
+        elif verb in ("analyze", "a"):
+            self._run_arc_raw(["arc", "stack", "analyze"])
+        elif verb in ("checkout", "c"):
+            branch = arg or (
+                self.stack_view.current_branch.name
+                if self.stack_view and self.stack_view.current_branch
+                else ""
+            )
+            if branch:
+                self._emit(f"[{_T.muted}]$ git checkout {branch}[/{_T.muted}]")
+                self._checkout_worker(branch)
+            else:
+                self._emit(f"[{_T.yellow}]usage: checkout <branch>[/{_T.yellow}]")
         elif verb in ("refresh", "R"):
             self.action_refresh()
         elif verb in ("quit", "q"):
             self.exit()
+        elif verb in ("help", "?"):
+            self.push_screen(HelpScreen())
         else:
             self._emit(
-                f"[{_T.red}]unknown: {cmd}[/{_T.red}]  [{_T.dim}]try: sync push land restack quit[/{_T.dim}]"
+                f"[{_T.red}]unknown: {cmd}[/{_T.red}]  [{_T.dim}]press ? for help[/{_T.dim}]"
             )
 
-    # ── Helpers ─────────────────────────────────────────────────────────────
+    # ── Workers ──────────────────────────────────────────────────────────────
 
     def _run_arc(self, cmd: str, branch: str = "") -> None:
         self._emit(f"[{_T.muted}]$ arc {cmd}{' ' + branch if branch else ''}[/{_T.muted}]")
         self._run_arc_worker(cmd, branch)
 
+    def _run_arc_raw(self, args: list[str]) -> None:
+        self._emit(f"[{_T.muted}]$ {' '.join(args)}[/{_T.muted}]")
+        self._run_raw_worker(args)
+
     @work(thread=True, exit_on_error=False)
     def _run_arc_worker(self, cmd: str, branch: str) -> None:
         try:
-            args = ["arc", cmd] + ([branch] if branch and cmd in ("land", "restack") else [])
-            result = subprocess.run(
-                args,
-                cwd=self.root,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
+            args = ["arc", cmd] + ([branch] if branch and cmd in ("land", "restack", "new") else [])
+            result = subprocess.run(args, cwd=self.root, capture_output=True, text=True, timeout=60)
             if result.returncode == 0:
                 out = (result.stdout or "").strip()
                 self.call_from_thread(self._on_arc_success, cmd, out)
             else:
-                err = (result.stderr or result.stdout or "unknown error").strip()[:200]
+                err = (result.stderr or result.stdout or "unknown error").strip()[:300]
                 self.call_from_thread(self._on_arc_failure, cmd, err)
         except Exception as e:
-            self.call_from_thread(self._on_arc_failure, cmd, str(e)[:120])
+            self.call_from_thread(self._on_arc_failure, cmd, str(e)[:150])
+
+    @work(thread=True, exit_on_error=False)
+    def _run_raw_worker(self, args: list[str]) -> None:
+        try:
+            result = subprocess.run(args, cwd=self.root, capture_output=True, text=True, timeout=60)
+            out = (result.stdout or result.stderr or "").strip()
+            color = _T.green if result.returncode == 0 else _T.red
+            for line in out.splitlines()[:20]:
+                self.call_from_thread(self._emit, f"[{color}]{line}[/{color}]")
+            if result.returncode == 0:
+                self.call_from_thread(self._load_state_async)
+        except Exception as e:
+            self.call_from_thread(self._emit, f"[{_T.red}]{e}[/{_T.red}]")
+
+    @work(thread=True, exit_on_error=False)
+    def _checkout_worker(self, branch: str) -> None:
+        try:
+            result = subprocess.run(
+                ["git", "checkout", branch],
+                cwd=self.root,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                self.call_from_thread(
+                    self._emit, f"[{_T.green}]✓ checked out {branch}[/{_T.green}]"
+                )
+                self.call_from_thread(self._load_state_async)
+            else:
+                err = (result.stderr or "").strip()
+                self.call_from_thread(self._emit, f"[{_T.red}]✗ {err}[/{_T.red}]")
+        except Exception as e:
+            self.call_from_thread(self._emit, f"[{_T.red}]{e}[/{_T.red}]")
 
     def _on_arc_success(self, cmd: str, output: str) -> None:
         self._emit(f"[{_T.green}]✓ {cmd} succeeded[/{_T.green}]")
         if output:
-            for line in output.splitlines()[:8]:
+            for line in output.splitlines()[:10]:
                 self._emit(f"[{_T.dim}]  {line}[/{_T.dim}]")
         self._load_state_async()
 
     def _on_arc_failure(self, cmd: str, error: str) -> None:
         self._emit(f"[{_T.red}]✗ {cmd} failed[/{_T.red}]")
-        for line in error.splitlines()[:5]:
+        for line in error.splitlines()[:6]:
             self._emit(f"[{_T.red}]  {line}[/{_T.red}]")
 
     @work(thread=True)
@@ -888,6 +1102,8 @@ class DashboardApp(App):
             self.query_one("#output_log", RichLog).write(markup)
         except Exception:
             pass
+
+    # ── Refresh helpers ──────────────────────────────────────────────────────
 
     def _refresh_tree(self) -> None:
         try:
@@ -933,7 +1149,7 @@ class DashboardApp(App):
             pass
 
 
-def run_dashboard(root: Path) -> None:
-    theme = load_theme(root)
+def run_dashboard(root: Path, theme_name: str | None = None) -> None:
+    theme = load_theme(root, override=theme_name)
     app = DashboardApp(root, theme=theme)
     app.run()

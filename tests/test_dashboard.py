@@ -316,8 +316,8 @@ class TestSummaryWidget:
         assert "2" in output
 
     def test_renders_pr_count(self):
-        b1 = make_branch("feat/a", pr_number=1)
-        b2 = make_branch("feat/b", base="feat/a", pr_number=2)
+        b1 = make_branch("feat/a", pr_number=1, draft=False)
+        b2 = make_branch("feat/b", base="feat/a", pr_number=2, draft=False)
         stack = StackView(base="main", branches=[b1, b2])
         output = SummaryWidget(stack, loading=False).render()
         assert "PR" in output
@@ -386,7 +386,8 @@ class TestDetailWidget:
     def test_renders_empty_when_no_branch(self):
         stack = StackView(base="main", branches=[])
         output = DetailWidget(stack).render()
-        assert output == ""
+        # two-column layout always shows detail panel; empty stack shows a hint
+        assert "select" in output.lower() or output == ""
 
     def test_renders_branch_name(self):
         b = make_branch("feat/auth")
