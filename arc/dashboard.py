@@ -496,7 +496,6 @@ SummaryWidget {{
         Binding("r", "cmd_restack", "restack", show=False),
         Binding("o", "open_pr", "open PR", show=False),
         Binding("R", "refresh", "refresh", show=False),
-        Binding("q", "quit", "quit", show=False),
     ]
 
     TITLE = "arc dashboard"
@@ -522,6 +521,10 @@ SummaryWidget {{
         yield RichLog(id="output_log", highlight=True, markup=True)
 
     def on_mount(self) -> None:
+        # Start unfocused so browse-mode keys (q, j/k, s, p…) work immediately.
+        # The user focuses the input explicitly by clicking it or pressing Tab.
+        self.query_one("#cmd_input", Input).blur()
+        self.set_focus(None)
         self._load_state_async()
         self.start_polling()
         self._emit(f"[{_MUTED}]arc dashboard — use ↑↓ to navigate, enter to expand[/{_MUTED}]")
@@ -647,8 +650,17 @@ SummaryWidget {{
         self._emit(f"[{_MUTED}]refreshing…[/{_MUTED}]")
         self._load_state_async()
 
-    async def action_quit(self) -> None:
-        self.exit()
+    def on_key(self, event) -> None:  # type: ignore[override]
+        # Handle q and Escape directly so they fire even when no widget is focused.
+        # We skip q when the Input is focused (user might be typing a command).
+        input_focused = isinstance(self.focused, Input)
+        if event.key == "q" and not input_focused:
+            event.stop()
+            self.exit()
+        elif event.key == "escape" and input_focused:
+            event.stop()
+            self.query_one("#cmd_input", Input).blur()
+            self.set_focus(None)
 
     # ── Input command handling ───────────────────────────────────────────────
 
