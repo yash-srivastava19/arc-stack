@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path as _Path
-from typing import TypedDict
+from typing import NotRequired, TypedDict
 
 from rich.console import Console as _Console
 
@@ -14,6 +14,7 @@ from arc.state import StackState
 class RebasePlanStep(TypedDict):
     branch: str
     onto: str
+    old_base: NotRequired[str]
 
 
 def parent_branch(data: StackState, name: str) -> str:

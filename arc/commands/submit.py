@@ -8,7 +8,7 @@ import sys
 
 import click
 
-from arc import git, github, ops, tip
+from arc import cascade, git, github, ops, tip
 from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err, out
@@ -215,24 +215,40 @@ def _retarget_above_prs(above: list[str], data: StackState, parent: str, quiet: 
 
 
 def _restack_above_branches(
-    above: list[str], squash_merged: bool, target: str, parent: str, quiet: bool
+    above: list[str], squash_merged: bool, target: str, parent: str, quiet: bool, root
 ) -> None:
-    """Rebase all branches above the landing branch onto parent. Rolls back on conflict."""
-    pre_shas = {n: git.get_sha(n) for n in above}
+    """Rebase all branches above the landing branch onto parent via cascade.run_cascade.
+
+    On a real conflict, the cascade pauses and persists resumable state
+    instead of rolling back; on a pre-condition failure, cascade.run_cascade
+    rolls back on its own before returning.
+    """
+    old_base = target if squash_merged else None
+    plan: list[cascade.RebasePlanStep] = []
     for ab in above:
-        git.checkout(ab)
-        result = (
-            git.rebase_onto(parent, target, ab) if squash_merged else git.rebase_fork_point(parent)
+        step: cascade.RebasePlanStep = {"branch": ab, "onto": parent}
+        if old_base:
+            step["old_base"] = old_base
+        plan.append(step)
+    result = cascade.run_cascade(plan, root, command="rebase", quiet=quiet)
+    if result["state"] == "paused":
+        files = result["conflicted_files"]
+        err.print(
+            f"Conflict rebasing {result['conflict_branch']}: {', '.join(files) or 'see git status'}"
         )
-        if result.returncode != 0:
-            for n, sha in pre_shas.items():
-                try:
-                    git.checkout(n)
-                    git._run(["git", "reset", "--hard", sha])
-                except Exception:
-                    pass
-            err.print(f"Conflict rebasing {ab}. Resolve and run 'arc rebase --continue'.")
-            sys.exit(3)
+        err.print(
+            f"Resolve, then run 'arc rebase --continue', "
+            f"then re-run 'arc land {target} --force' to finish."
+        )
+        _shared._maybe_print_error_hint(root)
+        sys.exit(3)
+    if result["state"] == "error":
+        err.print(
+            f"Could not start rebase of {result['branch']}: {result['message']}",
+            style="red",
+        )
+        _shared._maybe_print_error_hint(root)
+        sys.exit(3)
 
 
 def _maybe_auto_promote(above: list[str], data: StackState, root, quiet: bool) -> None:
@@ -316,7 +332,7 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
         )
 
         _retarget_above_prs(above, data, parent, quiet)
-        _restack_above_branches(above, squash_merged, target, parent, quiet)
+        _restack_above_branches(above, squash_merged, target, parent, quiet, root)
 
         if not keep_branch:
             git.checkout(parent)

@@ -277,3 +277,31 @@ def test_abort_cascade_rolls_back_every_branch_and_clears_state(tmp_path):
     mock_checkout.assert_any_call("feat/b")
     mock_run.assert_any_call(["git", "reset", "--hard", "s1"])
     mock_run.assert_any_call(["git", "reset", "--hard", "s2"])
+
+
+def test_run_cascade_uses_rebase_onto_when_old_base_present(tmp_path):
+    plan = [{"branch": "feat/api", "onto": "main", "old_base": "feat/auth"}]
+    with (
+        patch("arc.cascade.git.get_sha", return_value="sha0"),
+        patch("arc.cascade.git.checkout"),
+        patch("arc.cascade.git.rebase_onto", return_value=mock_result(0)) as mock_onto,
+        patch("arc.cascade.git.rebase_fork_point") as mock_fp,
+    ):
+        result = cascade.run_cascade(plan, tmp_path, command="rebase", quiet=True)
+    assert result == {"ok": True, "state": "done", "command": "rebase"}
+    mock_onto.assert_called_once_with("main", "feat/auth", "feat/api")
+    mock_fp.assert_not_called()
+
+
+def test_run_cascade_uses_fork_point_when_old_base_absent(tmp_path):
+    plan = [{"branch": "feat/api", "onto": "main"}]
+    with (
+        patch("arc.cascade.git.get_sha", return_value="sha0"),
+        patch("arc.cascade.git.checkout"),
+        patch("arc.cascade.git.rebase_onto") as mock_onto,
+        patch("arc.cascade.git.rebase_fork_point", return_value=mock_result(0)) as mock_fp,
+    ):
+        result = cascade.run_cascade(plan, tmp_path, command="rebase", quiet=True)
+    assert result == {"ok": True, "state": "done", "command": "rebase"}
+    mock_fp.assert_called_once_with("main")
+    mock_onto.assert_not_called()
