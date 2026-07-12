@@ -22,10 +22,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v5
 
       - name: Validate version matches pyproject.toml
         run: |
@@ -33,6 +37,21 @@ jobs:
           if [ "$ACTUAL" != "${{ inputs.version }}" ]; then
             echo "Version mismatch: pyproject.toml has $ACTUAL but release input is ${{ inputs.version }}"
             echo "Bump the version in pyproject.toml via a PR first, then re-run this workflow."
+            exit 1
+          fi
+
+      - name: Validate release is running from main
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          if [ "$BRANCH" != "main" ]; then
+            echo "Release workflow must run from main, not $BRANCH"
+            exit 1
+          fi
+
+      - name: Validate tag does not already exist
+        run: |
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "Tag v${{ inputs.version }} already exists"
             exit 1
           fi
 
