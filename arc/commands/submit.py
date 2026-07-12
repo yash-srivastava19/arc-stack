@@ -217,7 +217,12 @@ def _retarget_above_prs(above: list[str], data: StackState, parent: str, quiet: 
 def _restack_above_branches(
     above: list[str], squash_merged: bool, target: str, parent: str, quiet: bool, root
 ) -> None:
-    """Rebase all branches above the landing branch onto parent via cascade.run_cascade."""
+    """Rebase all branches above the landing branch onto parent via cascade.run_cascade.
+
+    On a real conflict, the cascade pauses and persists resumable state
+    instead of rolling back; on a pre-condition failure, cascade.run_cascade
+    rolls back on its own before returning.
+    """
     old_base = target if squash_merged else None
     plan: list[cascade.RebasePlanStep] = []
     for ab in above:
@@ -235,12 +240,14 @@ def _restack_above_branches(
             f"Resolve, then run 'arc rebase --continue', "
             f"then re-run 'arc land {target} --force' to finish."
         )
+        _shared._maybe_print_error_hint(root)
         sys.exit(3)
     if result["state"] == "error":
         err.print(
             f"Could not start rebase of {result['branch']}: {result['message']}",
             style="red",
         )
+        _shared._maybe_print_error_hint(root)
         sys.exit(3)
 
 
