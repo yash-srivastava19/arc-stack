@@ -1,0 +1,26 @@
+name: Feature request
+description: Suggest a focused improvement
+title: "feat: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow
+      description: What stacked-PR workflow are you trying to improve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: What should arc do differently?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: What do you do today instead?
+    validations:
+      required: false

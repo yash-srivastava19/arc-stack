@@ -2,10 +2,11 @@
 
 ## Supported Versions
 
-| Version | Supported |
-|---------|-----------|
-| 0.5.x   | ✅ |
-| < 0.5   | ❌ |
+Arc supports the latest published minor release line. Older minor lines may receive
+security fixes only when the fix is low-risk and users cannot reasonably upgrade.
+
+Use the latest version on PyPI or GitHub Releases before reporting an issue, unless
+the vulnerability prevents upgrading.
 
 ## Reporting a Vulnerability
 
