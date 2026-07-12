@@ -11,7 +11,7 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer, Vertical
 from textual.widgets import Input, RichLog, Static
-from textual.worker import Worker, WorkerState
+from textual.worker import Worker
 
 from arc import git, github
 from arc import state as st
@@ -120,11 +120,11 @@ class StackView:
 # ── State loader ─────────────────────────────────────────────────────────────
 
 
-def load_stack_view(root: Path) -> StackView:
-    """Load stack state and GitHub PR status into a StackView.
+def load_local_stack_view(root: Path) -> StackView:
+    """Load stack state from local sources only (no network).
 
-    Reads .arc/state.json, counts commits per branch via git, and fetches
-    PR status from GitHub for branches that have a PR.
+    Reads .arc/state.json and git commit counts. Fast — called first so
+    the UI can render the branch tree while PR status fetches in the background.
     """
     try:
         current_git_branch = git.current_branch()
@@ -146,39 +146,17 @@ def load_stack_view(root: Path) -> StackView:
         except Exception:
             commits = 0
 
-        blocker_reason = None
-        ci_passing = None
-        approved = False
-        is_draft = False
-        pr_url = None
-
-        if pr_number:
-            pr_status = github.get_pr_status(pr_number)
-            ci_passing = pr_status.get("ci_passing")
-            approved = pr_status.get("approved", False)
-            is_draft = pr_status.get("draft", False)
-            pr_url = pr_status.get("url")
-
-            if ci_passing is False:
-                blocker_reason = "CI failing"
-            elif is_draft:
-                blocker_reason = "draft"
-            elif not approved:
-                blocker_reason = "awaiting review"
-        else:
-            is_draft = True
-
         branches.append(
             BranchStatus(
                 name=name,
                 pr_number=pr_number,
-                pr_url=pr_url,
-                ci_passing=ci_passing,
-                approved=approved,
-                draft=is_draft,
+                pr_url=None,
+                ci_passing=None,
+                approved=False,
+                draft=pr_number is None,
                 commits=commits,
                 revision=branch_dict.get("revision", 0),
-                blocker_reason=blocker_reason,
+                blocker_reason=None,
                 base=parent,
             )
         )
@@ -188,6 +166,37 @@ def load_stack_view(root: Path) -> StackView:
     if idx is not None:
         stack.current_index = idx
 
+    return stack
+
+
+def _apply_pr_status(branch: BranchStatus, pr_status: dict) -> None:
+    """Update a BranchStatus in-place with data from github.get_pr_status()."""
+    branch.ci_passing = pr_status.get("ci_passing")
+    branch.approved = pr_status.get("approved", False)
+    branch.draft = pr_status.get("draft", False)
+    branch.pr_url = pr_status.get("url")
+
+    if branch.ci_passing is False:
+        branch.blocker_reason = "CI failing"
+    elif branch.draft:
+        branch.blocker_reason = "draft"
+    elif not branch.approved:
+        branch.blocker_reason = "awaiting review"
+    else:
+        branch.blocker_reason = None
+
+
+# Keep as an alias used in tests
+def load_stack_view(root: Path) -> StackView:
+    """Load full stack view including GitHub PR status (blocking)."""
+    stack = load_local_stack_view(root)
+    for branch in stack.branches:
+        if branch.pr_number:
+            try:
+                pr_status = github.get_pr_status(branch.pr_number)
+                _apply_pr_status(branch, pr_status)
+            except Exception:
+                pass
     return stack
 
 
@@ -518,27 +527,52 @@ SummaryWidget {{
         self._emit(f"[{_MUTED}]arc dashboard — use ↑↓ to navigate, enter to expand[/{_MUTED}]")
 
     @work(thread=True, exit_on_error=False, exclusive=True)
-    def _load_state_worker(self) -> StackView | None:
+    def _load_state_worker(self) -> None:
+        """Two-phase load: local state first (fast), then GitHub per-branch (slow)."""
         try:
-            return load_stack_view(self.root)
+            # Phase 1 — instant: read state.json + git commit counts, no network
+            stack = load_local_stack_view(self.root)
+            self.call_from_thread(self._on_local_load, stack)
+
+            # Phase 2 — slow: fetch GitHub PR status one branch at a time
+            for branch in stack.branches:
+                if branch.pr_number:
+                    try:
+                        pr_status = github.get_pr_status(branch.pr_number)
+                        _apply_pr_status(branch, pr_status)
+                    except Exception:
+                        pass
+                    self.call_from_thread(self._refresh_content)
+
+            self.call_from_thread(self._on_load_done)
         except NotInitializedError:
             v = StackView(base="main", branches=[])
             v.error = "not initialized — run arc init"
-            return v
+            self.call_from_thread(self._on_local_load, v)
+            self.call_from_thread(self._on_load_done)
         except Exception as e:
             v = StackView(base="main", branches=[])
             v.error = str(e)
-            return v
+            self.call_from_thread(self._on_local_load, v)
+            self.call_from_thread(self._on_load_done)
 
-    def _on_load_complete(self, stack: StackView | None) -> None:
-        self._loading = False
-        if stack is not None:
-            self.stack_view = stack
+    def _on_local_load(self, stack: StackView) -> None:
+        """Called from thread after fast local load — show branch tree immediately."""
+        self.stack_view = stack
         self._refresh_all()
 
+    def _on_load_done(self) -> None:
+        """Called from thread when all (including GitHub) fetches are complete."""
+        self._loading = False
+        self._refresh_all()
+
+    def _refresh_content(self) -> None:
+        """Lightweight refresh called after each per-branch PR status fetch."""
+        self._refresh_tree()
+        self._refresh_detail()
+
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        if event.worker.name == "_load_state_worker" and event.state == WorkerState.SUCCESS:
-            self._on_load_complete(event.worker.result)
+        pass  # all updates driven by call_from_thread inside the worker
 
     def _load_state_async(self) -> None:
         self._loading = True
