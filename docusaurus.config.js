@@ -14,7 +14,7 @@ const config = {
     },
   ],
 
-  url: 'https://arc-docs.netlify.app',
+  url: 'https://arc-pr-docs.netlify.app',
   baseUrl: '/',
 
   organizationName: 'yash-srivastava19',

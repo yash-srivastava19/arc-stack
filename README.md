@@ -2,7 +2,7 @@
 [![Python](https://img.shields.io/pypi/pyversions/arc-prs.svg)](https://pypi.org/project/arc-prs/)
 [![CI](https://github.com/yash-srivastava19/arc-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/yash-srivastava19/arc-stack/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Docs](https://img.shields.io/badge/docs-arc--docs.netlify.app-blue)](https://arc-docs.netlify.app)
+[![Docs](https://img.shields.io/badge/docs-arc--docs.netlify.app-blue)](https://arc-pr-docs.netlify.app)
 
 # arc
 
