@@ -546,7 +546,7 @@ class BranchCommitWidget(Static):
         t = _T
         current = self.stack_view.current_branch
         if not current:
-            return ""
+            return f"[{t.dim}]loading…[/{t.dim}]"
 
         n = self.stack_view.current_index
         total = len(self.stack_view.branches)
@@ -1247,8 +1247,15 @@ class DashboardApp(App):
 
     def _on_arc_failure(self, cmd: str, error: str) -> None:
         self._emit(f"[{_T.red}]✗ {cmd} failed[/{_T.red}]")
-        for line in error.splitlines()[:6]:
-            self._emit(f"[{_T.red}]  {line}[/{_T.red}]")
+        # Strip Python tracebacks — only show the final exception line(s)
+        lines = error.splitlines()
+        meaningful = [
+            ln
+            for ln in lines
+            if ln.strip() and not ln.startswith("  File ") and not ln.startswith("Traceback")
+        ]
+        for line in (meaningful or lines)[:4]:
+            self._emit(f"[{_T.red}]  {line.strip()}[/{_T.red}]")
 
     @work(thread=True)
     def _open_url_worker(self, url: str) -> None:
@@ -1280,10 +1287,10 @@ class DashboardApp(App):
             view = self.stack_view or StackView(base="main", branches=[])
             tree = self.query_one("#branch_tree", BranchTreeWidget)
             tree.stack_view = view
-            tree.refresh()
+            tree.refresh(layout=True)
             commits = self.query_one("#branch_commits", BranchCommitWidget)
             commits.stack_view = view
-            commits.refresh()
+            commits.refresh(layout=True)
         except Exception:
             pass
 
@@ -1292,7 +1299,7 @@ class DashboardApp(App):
             view = self.stack_view or StackView(base="main", branches=[])
             detail = self.query_one("#detail", DetailWidget)
             detail.stack_view = view
-            detail.refresh()
+            detail.refresh(layout=True)
         except Exception:
             pass
 
@@ -1308,20 +1315,20 @@ class DashboardApp(App):
             summary = self.query_one("#summary", SummaryWidget)
             summary.stack_view = view
             summary.loading = self._loading
-            summary.refresh()
+            summary.refresh(layout=True)
 
             tree = self.query_one("#branch_tree", BranchTreeWidget)
             tree.stack_view = view
             tree.loading = self._loading
-            tree.refresh()
+            tree.refresh(layout=True)
 
             commits = self.query_one("#branch_commits", BranchCommitWidget)
             commits.stack_view = view
-            commits.refresh()
+            commits.refresh(layout=True)
 
             detail = self.query_one("#detail", DetailWidget)
             detail.stack_view = view
-            detail.refresh()
+            detail.refresh(layout=True)
         except Exception:
             pass
 
