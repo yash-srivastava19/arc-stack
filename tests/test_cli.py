@@ -2524,6 +2524,34 @@ def test_restack_calls_sync_tip_branch(tmp_path):
     mock_sync.assert_called_once()
 
 
+def test_restack_hints_arc_edit_when_more_branches_above(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.commands._shared._check_setup", return_value=True),
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.checkout"),
+    ):
+        result = runner.invoke(cli, ["restack", "feat/auth"])
+    assert result.exit_code == 0
+    assert "arc edit" in result.output
+
+
+def test_restack_no_hint_when_at_stack_tip(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.commands._shared._check_setup", return_value=True),
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.checkout"),
+    ):
+        result = runner.invoke(cli, ["restack", "feat/api"])
+    assert result.exit_code == 0
+    assert "arc edit" not in result.output
+
+
 def test_land_calls_sync_tip_branch(tmp_path):
     _write_state_with_branches(tmp_path)
     runner = CliRunner()

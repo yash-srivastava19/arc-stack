@@ -274,6 +274,12 @@ def restack_cmd(branch: str | None, dry_run: bool, quiet: bool) -> None:
     if not quiet:
         err.print(f"✓ {target} rebased onto {parent}.")
         err.print("hint: run arc push to update remote", style="dim")
+        if ops.upstack_branches(data, target):
+            err.print(
+                "hint: next time, 'arc edit' amends + cascades the whole "
+                "stack in one step instead of restacking branches one at a time",
+                style="dim",
+            )
 
 
 @click.command("rebase")
