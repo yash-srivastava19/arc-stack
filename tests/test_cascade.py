@@ -42,7 +42,8 @@ def test_run_cascade_real_conflict_saves_state_and_pauses(tmp_path):
         patch("arc.cascade.git.get_sha", return_value="sha0"),
         patch("arc.cascade.git.checkout"),
         patch("arc.cascade.git.rebase_fork_point", side_effect=fake_rebase),
-        patch("arc.cascade.git.is_mid_rebase", return_value=True),
+        # No rebase in progress until our own attempt on feat/b conflicts.
+        patch("arc.cascade.git.is_mid_rebase", side_effect=[False, True]),
         patch("arc.cascade.git.conflicted_files", return_value=["api.py"]),
     ):
         result = cascade.run_cascade(plan, tmp_path, command="rebase", quiet=True)
@@ -62,6 +63,31 @@ def test_run_cascade_real_conflict_saves_state_and_pauses(tmp_path):
     assert saved["plan"] == plan
     assert saved["completed"] == ["feat/a"]
     assert saved["pre_shas"] == {"feat/a": "sha0", "feat/b": "sha0"}
+
+
+def test_run_cascade_stale_mid_rebase_reports_error_without_touching_branches(tmp_path):
+    """A leftover .git/rebase-merge from an earlier interrupted, non-cascade
+    rebase must not be mistaken for a conflict in *this* run. Previously,
+    run_cascade would try to start the first branch's rebase, git would
+    refuse (rebase already in progress), and since is_mid_rebase() was
+    already True (from the stale dir), the code treated that failure as a
+    real paused conflict on this branch — misleading and required the user
+    to manually `rm -fr .git/rebase-merge`."""
+    plan = _plan(("feat/a", "main"), ("feat/b", "feat/a"))
+    with (
+        patch("arc.cascade.git.get_sha", return_value="sha0"),
+        patch("arc.cascade.git.checkout") as mock_checkout,
+        patch("arc.cascade.git.rebase_fork_point") as mock_rebase,
+        patch("arc.cascade.git.is_mid_rebase", return_value=True),
+    ):
+        result = cascade.run_cascade(plan, tmp_path, command="rebase", quiet=True)
+
+    assert result["ok"] is False
+    assert result["state"] == "error"
+    assert "already in progress" in result["message"].lower()
+    mock_checkout.assert_not_called()
+    mock_rebase.assert_not_called()
+    assert not (tmp_path / ".arc" / "rebase-in-progress.json").exists()
 
 
 def test_run_cascade_precondition_failure_rolls_back_no_state(tmp_path):

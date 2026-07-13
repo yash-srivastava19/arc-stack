@@ -14,7 +14,8 @@ from arc.commands._shared import err
 
 @click.command("checkout")
 @click.argument("target")
-def checkout_cmd(target):
+@click.option("-q", "--quiet", is_flag=True)
+def checkout_cmd(target, quiet):
     """Check out a branch by name or index (1-based)."""
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root)
@@ -29,7 +30,8 @@ def checkout_cmd(target):
             err.print(f"{name!r} is not in the stack.")
             sys.exit(5)
     git.checkout(name)
-    err.print(f"Switched to {name}.")
+    if not quiet:
+        err.print(f"Switched to {name}.")
 
 
 def _navigate(n: int, direction: int) -> None:

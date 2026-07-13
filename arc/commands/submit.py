@@ -217,7 +217,15 @@ def _retarget_above_prs(above: list[str], data: StackState, parent: str, quiet: 
 def _restack_above_branches(
     above: list[str], squash_merged: bool, target: str, parent: str, quiet: bool, root
 ) -> None:
-    """Rebase all branches above the landing branch onto parent via cascade.run_cascade.
+    """Rebase branches above the landing branch back into a chain via cascade.run_cascade.
+
+    Each branch is rebased onto the branch below it (not flatly onto parent),
+    mirroring ops.rebase_plan's chaining so a 3+ deep stack stays a chain
+    instead of fanning out into siblings. Only the first branch above target
+    needs an explicit old_base: target's ref is about to be deleted, so
+    fork-point (which the rest rely on) has nothing to key off. On a squash
+    merge, target's own reflog wouldn't help anyway since the squash commit
+    on parent is unrelated history to target's original commits.
 
     On a real conflict, the cascade pauses and persists resumable state
     instead of rolling back; on a pre-condition failure, cascade.run_cascade
@@ -225,11 +233,14 @@ def _restack_above_branches(
     """
     old_base = target if squash_merged else None
     plan: list[cascade.RebasePlanStep] = []
+    prev = parent
     for ab in above:
-        step: cascade.RebasePlanStep = {"branch": ab, "onto": parent}
+        step: cascade.RebasePlanStep = {"branch": ab, "onto": prev}
         if old_base:
             step["old_base"] = old_base
         plan.append(step)
+        prev = ab
+        old_base = None
     result = cascade.run_cascade(plan, root, command="rebase", quiet=quiet)
     if result["state"] == "paused":
         files = result["conflicted_files"]

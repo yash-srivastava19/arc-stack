@@ -168,6 +168,22 @@ def run_cascade(
     """
     if not plan:
         return {"ok": True, "state": "done", "command": command}
+    if git.is_mid_rebase(root):
+        # A rebase is already in progress before we've touched anything —
+        # either a stale .git/rebase-merge left over from an earlier
+        # interrupted rebase, or a real one the user started outside arc.
+        # Report it plainly rather than letting git's "already in progress"
+        # refusal on the first branch masquerade as a conflict on that branch.
+        return {
+            "ok": False,
+            "state": "error",
+            "branch": plan[0]["branch"],
+            "message": (
+                "a git rebase is already in progress. Resolve or run "
+                "'git rebase --abort' to clear it, then retry."
+            ),
+            "exit_code": 3,
+        }
     pre_shas = {step["branch"]: git.get_sha(step["branch"]) for step in plan}
     return _run_from(plan, root, command, plan, pre_shas, [], quiet)
 

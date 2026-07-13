@@ -38,6 +38,34 @@ def test_help():
     assert "arc" in result.output.lower()
 
 
+def test_arc_error_prints_clean_message_not_traceback(tmp_path):
+    """An ArcError (e.g. a failed `gh` call) raised deep in a command must be
+    caught at the CLI entrypoint and printed cleanly, not left to propagate
+    as a raw Python traceback (reported: `gh pr create` failing because the
+    branch wasn't pushed surfaced as an unactionable traceback)."""
+    from arc.exceptions import GitHubError
+
+    _write_state_no_prs(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.get_commit_subject", return_value="feat"),
+        patch("arc.git.get_commit_body", return_value=""),
+        patch("arc.git.commit_count", return_value=1),
+        patch("arc.github.get_pr", return_value=None),
+        patch(
+            "arc.github.create_pr",
+            side_effect=GitHubError("gh pr create failed: branch feat/auth not found on remote"),
+        ),
+    ):
+        result = runner.invoke(cli, ["submit"])
+    assert result.exit_code != 0
+    assert not isinstance(result.exception, GitHubError), (
+        "GitHubError must be handled at the CLI boundary, not left to propagate"
+    )
+    assert "not found on remote" in result.output
+
+
 def test_setup_success():
     runner = CliRunner()
     with (
@@ -455,7 +483,7 @@ def test_sync_exits_3_on_conflict(tmp_path):
         patch("arc.git.fetch"),
         patch("arc.git.rebase_fork_point", return_value=conflict_result),
         patch("arc.git.checkout"),
-        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.is_mid_rebase", side_effect=[False, True]),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.conflicted_files", return_value=["src/auth.py"]),
         patch("arc.github.get_pr", return_value=None),
@@ -815,6 +843,64 @@ def test_land_removes_branch_and_restacks(tmp_path):
     assert all(b["name"] != "feat/auth" for b in data["branches"])
 
 
+def test_land_restacks_three_deep_stack_in_chain_not_flat(tmp_path):
+    """With 2+ branches above the landed one, each should rebase onto the
+    newly-rebased branch below it (chained), not all flatten onto parent.
+
+    Regression test: after a squash-merge land of feat/auth in a
+    feat/auth -> feat/api -> feat/ui stack, feat/ui must land on top of
+    feat/api (post-rebase), not directly on main.
+    """
+    _write_state(
+        tmp_path,
+        prefix="feat",
+        branches=[
+            {"name": "feat/auth", "pr_number": 42, "revision": 1},
+            {"name": "feat/api", "pr_number": None, "revision": 0},
+            {"name": "feat/ui", "pr_number": None, "revision": 0},
+        ],
+    )
+
+    onto_calls = []
+
+    def fake_rebase_onto(new_base, old_base, branch):
+        onto_calls.append((new_base, old_base, branch))
+        r = MagicMock()
+        r.returncode = 0
+        return r
+
+    fork_point_calls = []
+
+    def fake_rebase_fork_point(onto):
+        fork_point_calls.append(onto)
+        r = MagicMock()
+        r.returncode = 0
+        return r
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value="squash123"),
+        patch("arc.git.get_sha", return_value="old_sha"),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase_onto", side_effect=fake_rebase_onto),
+        patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fork_point),
+        patch("arc.git.delete_branch"),
+        patch("arc.git.is_ancestor", return_value=False),
+    ):
+        result = runner.invoke(cli, ["land", "feat/auth", "-f"])
+    assert result.exit_code == 0, result.output
+    # feat/api (immediate child) rebases onto main, cut explicitly at feat/auth
+    # (needed because target's own ref/reflog won't survive to use fork-point).
+    assert ("main", "feat/auth", "feat/api") in onto_calls
+    # feat/ui rebases onto feat/api (the newly-restacked branch), not onto main —
+    # via fork-point, same mechanism arc sync already uses to chain rebases.
+    assert "feat/api" in fork_point_calls
+    assert ("main", "feat/auth", "feat/ui") not in onto_calls
+    assert "main" not in fork_point_calls
+
+
 def test_land_fails_if_no_pr(tmp_path):
     _write_state_with_branches(tmp_path)
     # feat/api has no PR
@@ -990,7 +1076,7 @@ def test_land_exits_3_on_conflict_and_saves_state(tmp_path):
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.git.checkout"),
         patch("arc.git.rebase_fork_point", return_value=conflict_result),
-        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.is_mid_rebase", side_effect=[False, True]),
         patch("arc.git.conflicted_files", return_value=["api.py"]),
     ):
         result = runner.invoke(cli, ["land", "feat/auth", "-f"])
@@ -1164,7 +1250,7 @@ def test_drop_exits_3_on_conflict_and_saves_state(tmp_path):
         patch("arc.git.checkout"),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", return_value=conflict_result),
-        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.is_mid_rebase", side_effect=[False, True]),
         patch("arc.git.conflicted_files", return_value=["api.py"]),
     ):
         result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
@@ -1258,7 +1344,7 @@ def test_rebase_exits_3_on_conflict_and_saves_state(tmp_path):
         patch("arc.git.checkout"),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", return_value=conflict_result),
-        patch("arc.git.is_mid_rebase", return_value=True),
+        patch("arc.git.is_mid_rebase", side_effect=[False, True]),
         patch("arc.git.conflicted_files", return_value=["api.py"]),
     ):
         result = runner.invoke(cli, ["rebase"])
@@ -1465,6 +1551,19 @@ def test_checkout_by_index(tmp_path):
         result = runner.invoke(cli, ["checkout", "2"])
     assert result.exit_code == 0
     mock_co.assert_called_once_with("feat/api")
+
+
+def test_checkout_quiet_suppresses_output(tmp_path):
+    """arc checkout -q, like every other command, suppresses the confirmation message."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.checkout"),
+    ):
+        result = runner.invoke(cli, ["checkout", "feat/api", "-q"])
+    assert result.exit_code == 0, result.output
+    assert result.output == ""
 
 
 def test_checkout_invalid_index(tmp_path):
