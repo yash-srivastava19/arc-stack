@@ -5,11 +5,25 @@ import click
 from arc import __version__
 from arc.commands import ALL_COMMANDS
 from arc.commands._shared import err, out  # noqa: F401  (re-export: tests patch arc.cli.err.print)
+from arc.exceptions import ArcError
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
 
 
-@click.group(context_settings=CONTEXT_SETTINGS)
+class ArcGroup(click.Group):
+    """Catches ArcError at the CLI boundary so failures print a clean message
+    instead of a raw Python traceback (e.g. a `gh` call failing because a
+    branch was never pushed)."""
+
+    def invoke(self, ctx):
+        try:
+            return super().invoke(ctx)
+        except ArcError as e:
+            err.print(str(e))
+            ctx.exit(1)
+
+
+@click.group(context_settings=CONTEXT_SETTINGS, cls=ArcGroup)
 @click.version_option(version=__version__, prog_name="arc")
 @click.option(
     "--no-color", is_flag=True, envvar="NO_COLOR", is_eager=True, help="Disable color output."
