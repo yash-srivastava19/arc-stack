@@ -61,7 +61,9 @@ def get_pr(branch: str) -> dict | None:
         check=False,
     )
     if result.returncode != 0:
-        return None
+        if "no pull requests found" in result.stderr.lower():
+            return None
+        raise GitHubError(result.stderr.strip() or "gh pr view failed")
     return json.loads(result.stdout)
 
 
