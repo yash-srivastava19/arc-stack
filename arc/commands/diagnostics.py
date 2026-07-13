@@ -249,11 +249,17 @@ def report_cmd(bug, feedback, message, dry_run, quiet):
 
 
 @click.command("dashboard")
+@click.option(
+    "--theme",
+    default=None,
+    metavar="NAME",
+    help="Color theme override (arc, dracula, nord, gruvbox, catppuccin, tokyo-night).",
+)
 @click.pass_context
-def dashboard_cmd(ctx) -> None:
+def dashboard_cmd(ctx, theme: str | None) -> None:
     """Launch interactive dashboard for stacked PRs."""
     import arc.git as git
     from arc.dashboard import run_dashboard
 
     root = git.find_repo_root()
-    run_dashboard(root)
+    run_dashboard(root, theme_name=theme)

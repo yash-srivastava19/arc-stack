@@ -4,6 +4,16 @@ All notable changes to arc are documented here.
 
 ---
 
+## [0.7.2] — 2026-07-13
+
+### Added
+- `arc dashboard` — full rewrite with two-column TUI layout: stack tree (left) with `├──`/`└──` branch connectors, CI/PR status badges, and commit count; detail panel (right) with PR info and context-aware next steps; commit log panel showing recent commits with SHA, subject, relative time, and author
+- `arc dashboard --theme <name>` — 6 built-in themes: `arc`, `dracula`, `nord`, `gruvbox`, `catppuccin`, `tokyo-night`; unknown theme names warn with the valid list instead of silently falling back
+- Dashboard keybindings: `j`/`k` navigate, `s` sync, `p` push, `l` land, `r` restack, `R` refresh, `c` checkout, `n` new branch, `a` analyze, `o` open PR in browser, `Ctrl+S` save SVG screenshot, `?` help overlay
+- Progressive loading: local state (git log, state.json) loads instantly; GitHub API data populates per-branch in the background without blocking the UI
+
+---
+
 ## [0.7.1] — 2026-07-12
 
 ### Fixed

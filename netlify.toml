@@ -1,0 +1,12 @@
+[build]
+  command = "npm ci && npm run build"
+  publish = "build"
+
+# Deploy previews (PRs) — skip entirely; docs only build from main.
+[context.deploy-preview]
+  command = "mkdir -p build && echo '<p>Deploy previews disabled — docs build from main only.</p>' > build/index.html"
+  publish = "build"
+
+[context.branch-deploy]
+  command = "mkdir -p build && echo '<p>Deploy previews disabled — docs build from main only.</p>' > build/index.html"
+  publish = "build"

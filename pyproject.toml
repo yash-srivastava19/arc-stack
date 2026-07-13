@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arc-prs"
-version = "0.7.1"
+version = "0.7.2"
 description = "Local CLI for managing stacked pull requests"
 readme = "README.md"
 license = "MIT"
@@ -64,6 +64,11 @@ ignore = ["E501"]
 python_version = "3.11"
 ignore_missing_imports = true
 check_untyped_defs = true
+
+[tool.coverage.run]
+omit = [
+    "arc/dashboard.py",  # Textual TUI — widget event handlers require a running app to test
+]
 
 [tool.pytest.ini_options]
 markers = [

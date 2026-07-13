@@ -90,18 +90,42 @@ def git_repo(tmp_path):
     bare = tmp_path / "remote.git"
     work = tmp_path / "work"
 
-    _sp.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True)
-    _sp.run(["git", "clone", str(bare), str(work)], check=True, capture_output=True)
+    # Strip GIT_DIR and related vars so git hooks (pre-commit etc.) don't leak
+    # the caller's repo context into these subprocesses.
+    _git_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
+    _sp.run(["git", "init", "--bare", str(bare)], check=True, capture_output=True, env=_git_env)
+    _sp.run(["git", "clone", str(bare), str(work)], check=True, capture_output=True, env=_git_env)
     _sp.run(
-        ["git", "config", "user.email", "test@arc.dev"], cwd=work, check=True, capture_output=True
+        ["git", "config", "user.email", "test@arc.dev"],
+        cwd=work,
+        check=True,
+        capture_output=True,
+        env=_git_env,
     )
-    _sp.run(["git", "config", "user.name", "Arc Test"], cwd=work, check=True, capture_output=True)
-    _sp.run(["git", "checkout", "-b", "main"], cwd=work, check=True, capture_output=True)
+    _sp.run(
+        ["git", "config", "user.name", "Arc Test"],
+        cwd=work,
+        check=True,
+        capture_output=True,
+        env=_git_env,
+    )
+    # git 2.28+ already defaults to 'main' on empty clones; ignore the error
+    # when the branch already exists.
+    _sp.run(["git", "checkout", "-b", "main"], cwd=work, capture_output=True, env=_git_env)
 
     (work / "README.md").write_text("init")
-    _sp.run(["git", "add", "."], cwd=work, check=True, capture_output=True)
-    _sp.run(["git", "commit", "-m", "init"], cwd=work, check=True, capture_output=True)
-    _sp.run(["git", "push", "-u", "origin", "main"], cwd=work, check=True, capture_output=True)
+    _sp.run(["git", "add", "."], cwd=work, check=True, capture_output=True, env=_git_env)
+    _sp.run(
+        ["git", "commit", "-m", "init"], cwd=work, check=True, capture_output=True, env=_git_env
+    )
+    _sp.run(
+        ["git", "push", "-u", "origin", "main"],
+        cwd=work,
+        check=True,
+        capture_output=True,
+        env=_git_env,
+    )
 
     return work
 
@@ -133,19 +157,33 @@ def stacked_repo(arc_stack):
     root = arc_stack
     from arc import state as st
 
+    _git_env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+
     for branch, filename, content in [
         ("feat/auth", "auth.py", "def auth(): pass\n"),
         ("feat/api", "api.py", "def api(): pass\n"),
         ("feat/tests", "tests.py", "def test_api(): pass\n"),
     ]:
-        sp.run(["git", "checkout", "-b", branch], cwd=root, check=True, capture_output=True)
-        (root / filename).write_text(content)
-        sp.run(["git", "add", filename], cwd=root, check=True, capture_output=True)
         sp.run(
-            ["git", "commit", "-m", f"add {filename}"], cwd=root, check=True, capture_output=True
+            ["git", "checkout", "-b", branch],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env=_git_env,
+        )
+        (root / filename).write_text(content)
+        sp.run(["git", "add", filename], cwd=root, check=True, capture_output=True, env=_git_env)
+        sp.run(
+            ["git", "commit", "-m", f"add {filename}"],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            env=_git_env,
         )
 
-    sp.run(["git", "checkout", "feat/auth"], cwd=root, check=True, capture_output=True)
+    sp.run(
+        ["git", "checkout", "feat/auth"], cwd=root, check=True, capture_output=True, env=_git_env
+    )
 
     data = st.init_state(base="main")
     for b in ("feat/auth", "feat/api", "feat/tests"):
