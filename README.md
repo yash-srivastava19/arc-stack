@@ -17,11 +17,23 @@ the branches above when one merges.
 
 `arc dashboard` ships with 6 built-in themes. Pick the one that matches your terminal:
 
-| | |
-|---|---|
-| ![arc theme](assets/arc-dashboard-arc.svg) **arc** (default) | ![dracula theme](assets/arc-dashboard-dracula.svg) **dracula** |
-| ![nord theme](assets/arc-dashboard-nord.svg) **nord** | ![gruvbox theme](assets/arc-dashboard-gruvbox.svg) **gruvbox** |
-| ![catppuccin theme](assets/arc-dashboard-catppuccin.svg) **catppuccin** | ![tokyo-night theme](assets/arc-dashboard-tokyo-night.svg) **tokyo-night** |
+**arc** (default)
+![arc theme](assets/arc-dashboard-arc.svg)
+
+**dracula**
+![dracula theme](assets/arc-dashboard-dracula.svg)
+
+**nord**
+![nord theme](assets/arc-dashboard-nord.svg)
+
+**gruvbox**
+![gruvbox theme](assets/arc-dashboard-gruvbox.svg)
+
+**catppuccin**
+![catppuccin theme](assets/arc-dashboard-catppuccin.svg)
+
+**tokyo-night**
+![tokyo-night theme](assets/arc-dashboard-tokyo-night.svg)
 
 ```bash
 arc dashboard --theme nord
