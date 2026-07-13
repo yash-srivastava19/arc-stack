@@ -1,13 +1,17 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from arc import github
+from arc.exceptions import GitHubError
 
 
-def mock_result(stdout="", returncode=0):
+def mock_result(stdout="", returncode=0, stderr=""):
     r = MagicMock()
     r.stdout = stdout
     r.returncode = returncode
+    r.stderr = stderr
     return r
 
 
@@ -32,8 +36,22 @@ def test_is_authenticated_false():
 
 
 def test_get_pr_returns_none_when_missing():
-    with patch("arc.github._run", return_value=mock_result(returncode=1)):
+    stderr = 'no pull requests found for branch "feat/auth"'
+    with patch("arc.github._run", return_value=mock_result(returncode=1, stderr=stderr)):
         assert github.get_pr("feat/auth") is None
+
+
+def test_get_pr_raises_on_unexpected_failure():
+    """A transient/auth gh failure must not be silently treated as 'no PR' —
+    that ambiguity previously let `arc submit` attempt to create a duplicate
+    PR for a branch that already had one, if `gh pr view` failed for any
+    reason other than the branch genuinely having no PR."""
+    with patch(
+        "arc.github._run",
+        return_value=mock_result(returncode=1, stderr="error: authentication required (401)"),
+    ):
+        with pytest.raises(GitHubError):
+            github.get_pr("feat/auth")
 
 
 def test_get_pr_returns_data():
