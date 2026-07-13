@@ -65,6 +65,11 @@ python_version = "3.11"
 ignore_missing_imports = true
 check_untyped_defs = true
 
+[tool.coverage.run]
+omit = [
+    "arc/dashboard.py",  # Textual TUI — widget event handlers require a running app to test
+]
+
 [tool.pytest.ini_options]
 markers = [
     "unit: pure logic tests, no I/O",
