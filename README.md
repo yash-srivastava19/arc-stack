@@ -13,9 +13,23 @@ the branches above when one merges.
 
 ![arc demo](assets/demo.gif)
 
+### Dashboard themes
+
+`arc dashboard` ships with 6 built-in themes. Pick the one that matches your terminal:
+
+| | |
+|---|---|
+| ![arc theme](assets/arc-dashboard-arc.svg) **arc** (default) | ![dracula theme](assets/arc-dashboard-dracula.svg) **dracula** |
+| ![nord theme](assets/arc-dashboard-nord.svg) **nord** | ![gruvbox theme](assets/arc-dashboard-gruvbox.svg) **gruvbox** |
+| ![catppuccin theme](assets/arc-dashboard-catppuccin.svg) **catppuccin** | ![tokyo-night theme](assets/arc-dashboard-tokyo-night.svg) **tokyo-night** |
+
+```bash
+arc dashboard --theme nord
+```
+
 ## Status
 
-- Version: `0.7.1`
+- Version: `0.7.2`
 - Python: `3.11` to `3.13`
 - CI: GitHub Actions
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
@@ -221,11 +235,37 @@ arc push -n    # shows which branches would be pushed
 arc land -n    # shows which branches would be restacked
 ```
 
-**Interactive dashboard** — view all PRs, CI status, and review state in one place:
+**Interactive dashboard** — a live TUI that gives you a full picture of your stack at a glance:
 
 ```bash
 arc dashboard
+arc dashboard --theme dracula   # arc | dracula | nord | gruvbox | catppuccin | tokyo-night
 ```
+
+The dashboard loads local state instantly and then enriches each branch with live GitHub data in the background. It shows:
+
+- **Stack tree** (left panel) — your branches in order, with depth indentation and `├──`/`└──` connectors. Each branch shows its PR status (`✓ approved`, `⚙ CI running`, `✗ CI failing`, `⬡ draft`, `○ no PR`) and commit count. A `▶` cursor marks your selection; `◀ HEAD` marks the checked-out branch.
+- **Commit log** (below tree) — the 20 most recent commits on the selected branch with short SHA, subject, relative time, and author. Context-aware hints at the bottom suggest the next natural action (open a PR, fix CI, request review, etc.).
+- **Detail panel** (right) — full PR info including URL, CI state, approval status, and the exact `arc` commands to move forward.
+- **Output log** (below detail) — live output of any arc command you run from the dashboard.
+
+Keybindings inside the dashboard:
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move up/down the stack |
+| `s` | `arc sync` — fetch and cascade-rebase |
+| `p` | `arc push` — force-push all branches |
+| `l` | `arc land` — land the selected branch |
+| `r` | `arc restack` — restack selected branch only |
+| `R` | Refresh GitHub data |
+| `c` | `arc checkout` — switch to selected branch |
+| `n` | `arc new` — create a new branch |
+| `a` | `arc stack analyze` — show critical path and blockers |
+| `o` | Open selected PR in browser |
+| `Ctrl+S` | Save SVG screenshot |
+| `?` | Help overlay |
+| `q` | Quit |
 
 **Read and write configuration:**
 
@@ -323,7 +363,7 @@ All commands accept `-q` (`--quiet`) to suppress hints and `-n` (`--dry-run`) wh
 | `arc top` / `arc bottom` | Jump to ends of the stack |
 | `arc tip` | Create/update a local `arc-tip` branch pointing at the stack's top and check it out |
 | `arc stack analyze [--json]` | Show critical path, safe-to-land branches, and blockers |
-| `arc dashboard` | Interactive TUI: all PRs, CI status, review state in one view |
+| `arc dashboard [--theme NAME]` | Interactive TUI: all PRs, CI status, review state in one view |
 | `arc config get\|set\|list` | Read and write arc configuration values |
 | `arc report [--bug\|--feedback]` | File a bug or feedback issue in arc's GitHub repo |
 | `arc schema {status\|submit\|analyze}` | Print JSON Schema for a command's `--json` output |

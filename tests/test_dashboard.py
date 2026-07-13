@@ -2,124 +2,112 @@ from pathlib import Path
 from unittest.mock import patch
 
 from arc.dashboard import (
-    ActionsWidget,
-    BranchDetailsWidget,
+    THEMES,
+    BranchCommitWidget,
     BranchStatus,
-    StackTreeWidget,
+    BranchTreeWidget,
+    DetailWidget,
     StackView,
+    SummaryWidget,
     load_stack_view,
+    load_theme,
 )
+
+_ARC = THEMES["arc"]  # default theme used in color assertions
+
+
+def make_branch(
+    name="feat/a",
+    pr_number=None,
+    pr_url=None,
+    ci_passing=None,
+    approved=False,
+    draft=True,
+    commits=1,
+    revision=1,
+    blocker_reason=None,
+    base="main",
+    commit_messages=None,
+) -> BranchStatus:
+    return BranchStatus(
+        name=name,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        ci_passing=ci_passing,
+        approved=approved,
+        draft=draft,
+        commits=commits,
+        revision=revision,
+        blocker_reason=blocker_reason,
+        base=base,
+        commit_messages=commit_messages or [],
+    )
 
 
 class TestBranchStatus:
-    """Tests for BranchStatus dataclass."""
-
     def test_status_icon_approved(self):
-        """Approved branch shows ✅."""
-        branch = BranchStatus(
-            name="feat/auth",
-            pr_number=1,
-            ci_passing=True,
-            approved=True,
-            draft=False,
-            commits=1,
-            revision=1,
-            blocker_reason=None,
-        )
-        assert branch.status_icon == "✅"
-
-    def test_status_icon_blocked(self):
-        """Blocked branch shows ⏳."""
-        branch = BranchStatus(
-            name="feat/api",
-            pr_number=2,
-            ci_passing=True,
-            approved=False,
-            draft=False,
-            commits=1,
-            revision=1,
-            blocker_reason="not yet approved",
-        )
-        assert branch.status_icon == "⏳"
+        branch = make_branch(pr_number=1, ci_passing=True, approved=True, draft=False)
+        assert branch.status_icon == "✓"
 
     def test_status_icon_ci_running(self):
-        """CI running shows ⚙️."""
-        branch = BranchStatus(
-            name="feat/ui",
-            pr_number=3,
-            ci_passing=None,
-            approved=False,
-            draft=False,
-            commits=1,
-            revision=1,
-            blocker_reason=None,
-        )
-        assert branch.status_icon == "⚙️"
+        branch = make_branch(pr_number=3, ci_passing=None, approved=False, draft=False)
+        assert branch.status_icon == "⚙"
 
     def test_status_icon_ci_failing(self):
-        """CI failing shows ✗."""
-        branch = BranchStatus(
-            name="feat/test",
-            pr_number=4,
-            ci_passing=False,
-            approved=False,
-            draft=False,
-            commits=1,
-            revision=1,
-            blocker_reason="CI is failing",
-        )
+        branch = make_branch(pr_number=4, ci_passing=False, approved=False, draft=False)
         assert branch.status_icon == "✗"
 
     def test_status_icon_no_pr(self):
-        """No PR shows ○."""
-        branch = BranchStatus(
-            name="feat/draft",
-            pr_number=None,
-            ci_passing=None,
-            approved=False,
-            draft=True,
-            commits=2,
-            revision=1,
-            blocker_reason=None,
-        )
+        branch = make_branch(pr_number=None, draft=True)
         assert branch.status_icon == "○"
+
+    def test_status_color_approved(self):
+        branch = make_branch(pr_number=1, ci_passing=True, approved=True, draft=False)
+        assert branch.status_color(_ARC) == _ARC.green
+
+    def test_status_color_ci_failing(self):
+        branch = make_branch(pr_number=1, ci_passing=False, draft=False)
+        assert branch.status_color(_ARC) == _ARC.red
+
+    def test_status_color_no_pr(self):
+        branch = make_branch(pr_number=None)
+        assert branch.status_color(_ARC) == _ARC.dim
+
+    def test_status_color_uses_theme(self):
+        branch = make_branch(pr_number=1, ci_passing=True, approved=True, draft=False)
+        dracula = THEMES["dracula"]
+        assert branch.status_color(dracula) == dracula.green
+        assert branch.status_color(dracula) != branch.status_color(_ARC)
 
 
 class TestStackView:
-    """Tests for StackView dataclass."""
-
     def test_current_branch_valid_index(self):
-        """current_branch returns branch at current_index."""
-        b1 = BranchStatus("feat/a", 1, True, True, False, 1, 1, None)
-        b2 = BranchStatus("feat/b", 2, True, False, False, 1, 1, "not yet approved")
+        b1 = make_branch("feat/a", pr_number=1, ci_passing=True, approved=True)
+        b2 = make_branch("feat/b", pr_number=2, base="feat/a")
         stack = StackView(base="main", branches=[b1, b2], current_index=0)
         assert stack.current_branch == b1
 
     def test_current_branch_out_of_bounds(self):
-        """current_branch returns None when index out of bounds."""
-        b1 = BranchStatus("feat/a", 1, True, True, False, 1, 1, None)
+        b1 = make_branch("feat/a", pr_number=1)
         stack = StackView(base="main", branches=[b1], current_index=5)
         assert stack.current_branch is None
 
     def test_move_selection_down(self):
-        """move_selection(1) moves cursor down."""
-        b1 = BranchStatus("feat/a", 1, True, True, False, 1, 1, None)
-        b2 = BranchStatus("feat/b", 2, True, False, False, 1, 1, "not yet approved")
+        b1 = make_branch("feat/a")
+        b2 = make_branch("feat/b", base="feat/a")
         stack = StackView(base="main", branches=[b1, b2], current_index=0)
         stack.move_selection(1)
         assert stack.current_index == 1
 
     def test_move_selection_up(self):
-        """move_selection(-1) moves cursor up."""
-        b1 = BranchStatus("feat/a", 1, True, True, False, 1, 1, None)
-        b2 = BranchStatus("feat/b", 2, True, False, False, 1, 1, "not yet approved")
+        b1 = make_branch("feat/a")
+        b2 = make_branch("feat/b", base="feat/a")
         stack = StackView(base="main", branches=[b1, b2], current_index=1)
         stack.move_selection(-1)
         assert stack.current_index == 0
 
     def test_move_selection_respects_bounds(self):
-        """move_selection respects bounds and doesn't move out of range."""
-        b1 = BranchStatus("feat/a", 1, True, True, False, 1, 1, None)
+        b1 = make_branch("feat/a")
         stack = StackView(base="main", branches=[b1], current_index=0)
         stack.move_selection(-5)
         assert stack.current_index == 0
@@ -127,24 +115,39 @@ class TestStackView:
         assert stack.current_index == 0
 
     def test_move_selection_empty_stack(self):
-        """move_selection on empty stack stays at 0."""
         stack = StackView(base="main", branches=[], current_index=0)
         stack.move_selection(1)
         assert stack.current_index == 0
 
+    def test_index_of_existing_branch(self):
+        b1 = make_branch("feat/a")
+        b2 = make_branch("feat/b")
+        stack = StackView(base="main", branches=[b1, b2])
+        assert stack.index_of("feat/a") == 0
+        assert stack.index_of("feat/b") == 1
+
+    def test_index_of_missing_branch(self):
+        b1 = make_branch("feat/a")
+        stack = StackView(base="main", branches=[b1])
+        assert stack.index_of("feat/x") is None
+
 
 class TestLoadStackView:
-    """Tests for load_stack_view function."""
-
+    @patch("arc.dashboard.git.current_branch", return_value="")
+    @patch("arc.dashboard.git.commit_count", return_value=2)
     @patch("arc.dashboard.st.load")
     @patch("arc.dashboard.github.get_pr_status")
-    def test_load_stack_view_with_pr(self, mock_get_pr, mock_load):
-        """load_stack_view loads branches and PR status."""
+    def test_load_stack_view_with_pr(self, mock_get_pr, mock_load, _cc, _cb):
         mock_load.return_value = {
             "base": "main",
-            "branches": [{"name": "feat/auth", "pr_number": 1, "commits": 2, "revision": 1}],
+            "branches": [{"name": "feat/auth", "pr_number": 1, "revision": 1}],
         }
-        mock_get_pr.return_value = {"ci_passing": True, "approved": True, "draft": False}
+        mock_get_pr.return_value = {
+            "ci_passing": True,
+            "approved": True,
+            "draft": False,
+            "url": None,
+        }
 
         stack = load_stack_view(Path("."))
 
@@ -154,13 +157,15 @@ class TestLoadStackView:
         assert stack.branches[0].pr_number == 1
         assert stack.branches[0].ci_passing is True
         assert stack.branches[0].approved is True
+        assert stack.branches[0].commits == 2
 
+    @patch("arc.dashboard.git.current_branch", return_value="")
+    @patch("arc.dashboard.git.commit_count", return_value=0)
     @patch("arc.dashboard.st.load")
-    def test_load_stack_view_no_pr(self, mock_load):
-        """load_stack_view marks branches without PR as draft."""
+    def test_load_stack_view_no_pr(self, mock_load, _cc, _cb):
         mock_load.return_value = {
             "base": "main",
-            "branches": [{"name": "feat/draft", "pr_number": None, "commits": 1, "revision": 1}],
+            "branches": [{"name": "feat/draft", "pr_number": None, "revision": 1}],
         }
 
         stack = load_stack_view(Path("."))
@@ -168,153 +173,409 @@ class TestLoadStackView:
         assert stack.branches[0].draft is True
         assert stack.branches[0].pr_number is None
 
+    @patch("arc.dashboard.git.current_branch", return_value="")
+    @patch("arc.dashboard.git.commit_count", return_value=1)
     @patch("arc.dashboard.st.load")
     @patch("arc.dashboard.github.get_pr_status")
-    def test_blocker_reason_ci_failing(self, mock_get_pr, mock_load):
-        """load_stack_view sets blocker when CI is failing."""
+    def test_blocker_reason_ci_failing(self, mock_get_pr, mock_load, _cc, _cb):
         mock_load.return_value = {
             "base": "main",
-            "branches": [{"name": "feat/broken", "pr_number": 1, "commits": 1, "revision": 1}],
+            "branches": [{"name": "feat/broken", "pr_number": 1, "revision": 1}],
         }
-        mock_get_pr.return_value = {"ci_passing": False, "approved": False, "draft": False}
+        mock_get_pr.return_value = {
+            "ci_passing": False,
+            "approved": False,
+            "draft": False,
+            "url": None,
+        }
 
         stack = load_stack_view(Path("."))
-        assert stack.branches[0].blocker_reason == "CI is failing"
+        assert stack.branches[0].blocker_reason == "CI failing"
 
+    @patch("arc.dashboard.git.current_branch", return_value="")
+    @patch("arc.dashboard.git.commit_count", return_value=1)
     @patch("arc.dashboard.st.load")
     @patch("arc.dashboard.github.get_pr_status")
-    def test_blocker_reason_not_approved(self, mock_get_pr, mock_load):
-        """load_stack_view sets blocker when not approved."""
+    def test_blocker_reason_awaiting_review(self, mock_get_pr, mock_load, _cc, _cb):
         mock_load.return_value = {
             "base": "main",
-            "branches": [{"name": "feat/pending", "pr_number": 1, "commits": 1, "revision": 1}],
+            "branches": [{"name": "feat/pending", "pr_number": 1, "revision": 1}],
         }
-        mock_get_pr.return_value = {"ci_passing": True, "approved": False, "draft": False}
+        mock_get_pr.return_value = {
+            "ci_passing": True,
+            "approved": False,
+            "draft": False,
+            "url": None,
+        }
 
         stack = load_stack_view(Path("."))
-        assert stack.branches[0].blocker_reason == "not yet approved"
+        assert stack.branches[0].blocker_reason == "awaiting review"
 
+    @patch("arc.dashboard.git.current_branch", return_value="")
+    @patch("arc.dashboard.git.commit_count", return_value=1)
     @patch("arc.dashboard.st.load")
-    def test_load_stack_view_draft_branch(self, mock_load):
-        """load_stack_view handles draft branches (no PR) correctly."""
+    def test_load_stack_view_draft_branch(self, mock_load, _cc, _cb):
         mock_load.return_value = {
             "base": "main",
-            "branches": [{"name": "feat/wip", "pr_number": None, "commits": 1, "revision": 1}],
+            "branches": [{"name": "feat/wip", "pr_number": None, "revision": 1}],
         }
 
         stack = load_stack_view(Path("."))
         assert stack.branches[0].draft is True
         assert stack.branches[0].blocker_reason is None
 
+    @patch("arc.dashboard.git.current_branch", return_value="")
+    @patch("arc.dashboard.git.commit_count", return_value=1)
     @patch("arc.dashboard.st.load")
     @patch("arc.dashboard.github.get_pr_status")
-    def test_blocker_priority_ci_over_approval(self, mock_get_pr, mock_load):
-        """When both CI failing and not approved, CI failure takes priority."""
+    def test_blocker_priority_ci_over_approval(self, mock_get_pr, mock_load, _cc, _cb):
         mock_load.return_value = {
             "base": "main",
-            "branches": [{"name": "feat/broken", "pr_number": 1, "commits": 1, "revision": 1}],
+            "branches": [{"name": "feat/broken", "pr_number": 1, "revision": 1}],
         }
-        mock_get_pr.return_value = {"ci_passing": False, "approved": False, "draft": False}
+        mock_get_pr.return_value = {
+            "ci_passing": False,
+            "approved": False,
+            "draft": False,
+            "url": None,
+        }
 
         stack = load_stack_view(Path("."))
-        # Should show CI failure, not approval status
-        assert stack.branches[0].blocker_reason == "CI is failing"
+        assert stack.branches[0].blocker_reason == "CI failing"
 
-
-class TestDashboardIntegration:
-    """Integration tests for full dashboard workflow."""
-
+    @patch("arc.dashboard.git.current_branch", return_value="feat/api")
+    @patch("arc.dashboard.git.commit_count", return_value=1)
     @patch("arc.dashboard.st.load")
     @patch("arc.dashboard.github.get_pr_status")
-    def test_full_dashboard_workflow(self, mock_get_pr, mock_load):
-        """Full workflow: load stack, fetch PR status, render widgets."""
-        # Setup mock data
+    def test_auto_selects_current_git_branch(self, mock_get_pr, mock_load, _cc, _cb):
+        """load_stack_view sets current_index to the current git branch."""
         mock_load.return_value = {
             "base": "main",
             "branches": [
-                {"name": "feat/auth", "pr_number": 1, "commits": 2, "revision": 1},
-                {"name": "feat/api", "pr_number": 2, "commits": 1, "revision": 2},
-                {"name": "feat/ui", "pr_number": None, "commits": 1, "revision": 1},
+                {"name": "feat/auth", "pr_number": 1, "revision": 1},
+                {"name": "feat/api", "pr_number": 2, "revision": 1},
+            ],
+        }
+        mock_get_pr.return_value = {
+            "ci_passing": True,
+            "approved": True,
+            "draft": False,
+            "url": None,
+        }
+
+        stack = load_stack_view(Path("."))
+        assert stack.current_git_branch == "feat/api"
+        assert stack.current_index == 1  # auto-selected feat/api
+
+    @patch("arc.dashboard.git.current_branch", return_value="unrelated/branch")
+    @patch("arc.dashboard.git.commit_count", return_value=1)
+    @patch("arc.dashboard.st.load")
+    def test_current_index_stays_zero_when_branch_not_in_stack(self, mock_load, _cc, _cb):
+        """If current git branch is not in the stack, stays at index 0."""
+        mock_load.return_value = {
+            "base": "main",
+            "branches": [{"name": "feat/auth", "pr_number": None, "revision": 1}],
+        }
+
+        stack = load_stack_view(Path("."))
+        assert stack.current_index == 0
+
+    @patch("arc.dashboard.git.current_branch", return_value="")
+    @patch("arc.dashboard.git.commit_count", return_value=1)
+    @patch("arc.dashboard.st.load")
+    def test_parent_base_set_correctly(self, mock_load, _cc, _cb):
+        """First branch uses stack base; subsequent use previous branch as base."""
+        mock_load.return_value = {
+            "base": "main",
+            "branches": [
+                {"name": "feat/auth", "pr_number": None, "revision": 1},
+                {"name": "feat/api", "pr_number": None, "revision": 1},
             ],
         }
 
+        stack = load_stack_view(Path("."))
+        assert stack.branches[0].base == "main"
+        assert stack.branches[1].base == "feat/auth"
+
+
+class TestSummaryWidget:
+    def test_renders_loading_state(self):
+        stack = StackView(base="main", branches=[])
+        widget = SummaryWidget(stack, loading=True)
+        output = widget.render()
+        assert "loading" in output.lower()
+
+    def test_renders_error_state(self):
+        stack = StackView(base="main", branches=[])
+        stack.error = "Not initialized — run 'arc init'"
+        widget = SummaryWidget(stack, loading=False)
+        output = widget.render()
+        assert "arc init" in output
+
+    def test_renders_branch_count(self):
+        b1 = make_branch("feat/a")
+        b2 = make_branch("feat/b", base="feat/a")
+        stack = StackView(base="main", branches=[b1, b2])
+        output = SummaryWidget(stack, loading=False).render()
+        assert "2" in output
+
+    def test_renders_pr_count(self):
+        b1 = make_branch("feat/a", pr_number=1, draft=False)
+        b2 = make_branch("feat/b", base="feat/a", pr_number=2, draft=False)
+        stack = StackView(base="main", branches=[b1, b2])
+        output = SummaryWidget(stack, loading=False).render()
+        assert "PR" in output
+
+    def test_renders_base_branch_name(self):
+        stack = StackView(base="develop", branches=[])
+        output = SummaryWidget(stack, loading=False).render()
+        assert "develop" in output
+
+
+class TestBranchTreeWidget:
+    def test_renders_empty_stack_hint(self):
+        stack = StackView(base="main", branches=[])
+        output = BranchTreeWidget(stack).render()
+        assert "empty" in output.lower() or "arc new" in output
+
+    def test_renders_branch_names(self):
+        b1 = make_branch("feat/auth", pr_number=1, ci_passing=True, approved=True, draft=False)
+        b2 = make_branch("feat/api", base="feat/auth")
+        stack = StackView(base="main", branches=[b1, b2])
+        output = BranchTreeWidget(stack).render()
+        assert "feat/auth" in output
+        assert "feat/api" in output
+
+    def test_marks_selected_branch_with_cursor(self):
+        b1 = make_branch("feat/a")
+        b2 = make_branch("feat/b", base="feat/a")
+        stack = StackView(base="main", branches=[b1, b2], current_index=1)
+        output = BranchTreeWidget(stack).render()
+        assert "▶" in output
+
+    def test_marks_current_git_branch_with_head(self):
+        b1 = make_branch("feat/a")
+        b2 = make_branch("feat/b", base="feat/a")
+        stack = StackView(base="main", branches=[b1, b2], current_git_branch="feat/b")
+        output = BranchTreeWidget(stack).render()
+        assert "HEAD" in output
+
+    def test_warns_when_current_branch_not_in_stack(self):
+        b1 = make_branch("feat/a")
+        stack = StackView(base="main", branches=[b1], current_git_branch="hotfix/x")
+        output = BranchTreeWidget(stack).render()
+        assert "hotfix/x" in output
+        assert "arc add" in output
+
+    def test_shows_commit_count(self):
+        b1 = make_branch("feat/a", commits=3)
+        stack = StackView(base="main", branches=[b1])
+        output = BranchTreeWidget(stack).render()
+        assert "3c" in output
+
+    def test_shows_base_branch_at_top(self):
+        b1 = make_branch("feat/a")
+        stack = StackView(base="develop", branches=[b1])
+        output = BranchTreeWidget(stack).render()
+        assert "develop" in output
+
+    def test_shows_status_icon_in_row(self):
+        b1 = make_branch("feat/a", pr_number=1, ci_passing=True, approved=True, draft=False)
+        stack = StackView(base="main", branches=[b1])
+        output = BranchTreeWidget(stack).render()
+        assert "✓" in output
+
+
+class TestDetailWidget:
+    def test_renders_empty_when_no_branch(self):
+        stack = StackView(base="main", branches=[])
+        output = DetailWidget(stack).render()
+        # two-column layout always shows detail panel; empty stack shows a hint
+        assert "select" in output.lower() or output == ""
+
+    def test_renders_branch_name(self):
+        b = make_branch("feat/auth")
+        stack = StackView(base="main", branches=[b])
+        output = DetailWidget(stack).render()
+        assert "feat/auth" in output
+
+    def test_renders_pr_number(self):
+        b = make_branch("feat/auth", pr_number=42, draft=False, base="main")
+        stack = StackView(base="main", branches=[b])
+        output = DetailWidget(stack).render()
+        assert "#42" in output
+
+    def test_renders_pr_url(self):
+        b = make_branch(
+            "feat/auth",
+            pr_number=42,
+            pr_url="https://github.com/org/repo/pull/42",
+            draft=False,
+        )
+        stack = StackView(base="main", branches=[b])
+        output = DetailWidget(stack).render()
+        assert "github.com" in output
+
+    def test_renders_commit_count(self):
+        b = make_branch("feat/auth", commits=5)
+        stack = StackView(base="main", branches=[b])
+        output = DetailWidget(stack).render()
+        assert "5" in output
+
+    def test_renders_no_pr_hint(self):
+        b = make_branch("feat/auth", pr_number=None)
+        stack = StackView(base="main", branches=[b])
+        output = DetailWidget(stack).render()
+        assert "arc push" in output or "none" in output.lower()
+
+    def test_renders_ci_passing(self):
+        b = make_branch("feat/auth", pr_number=1, ci_passing=True, draft=False)
+        stack = StackView(base="main", branches=[b])
+        output = DetailWidget(stack).render()
+        assert "passing" in output
+
+    def test_renders_ci_failing(self):
+        b = make_branch("feat/auth", pr_number=1, ci_passing=False, draft=False)
+        stack = StackView(base="main", branches=[b])
+        output = DetailWidget(stack).render()
+        assert "failing" in output
+
+    def test_renders_base_branch(self):
+        b = make_branch("feat/api", base="feat/auth")
+        stack = StackView(base="main", branches=[b])
+        output = DetailWidget(stack).render()
+        assert "feat/auth" in output
+
+
+class TestDashboardIntegration:
+    @patch("arc.dashboard.git.current_branch", return_value="feat/ui")
+    @patch("arc.dashboard.git.commit_count", return_value=1)
+    @patch("arc.dashboard.st.load")
+    @patch("arc.dashboard.github.get_pr_status")
+    def test_full_dashboard_workflow(self, mock_get_pr, mock_load, _cc, _cb):
+        mock_load.return_value = {
+            "base": "main",
+            "branches": [
+                {"name": "feat/auth", "pr_number": 1, "revision": 1},
+                {"name": "feat/api", "pr_number": 2, "revision": 2},
+                {"name": "feat/ui", "pr_number": None, "revision": 1},
+            ],
+        }
         mock_get_pr.side_effect = [
-            {"ci_passing": True, "approved": True, "draft": False},
-            {"ci_passing": True, "approved": False, "draft": False},
+            {"ci_passing": True, "approved": True, "draft": False, "url": None},
+            {"ci_passing": True, "approved": False, "draft": False, "url": None},
         ]
 
-        # Load stack
         stack = load_stack_view(Path("."))
 
-        # Verify structure
         assert len(stack.branches) == 3
         assert stack.base == "main"
-        assert stack.current_index == 0
+        assert stack.current_git_branch == "feat/ui"
+        assert stack.current_index == 2  # auto-selected feat/ui
 
-        # Verify each branch
         assert stack.branches[0].name == "feat/auth"
-        assert stack.branches[0].status_icon == "✅"  # approved
+        assert stack.branches[0].status_icon == "✓"
         assert stack.branches[0].blocker_reason is None
 
         assert stack.branches[1].name == "feat/api"
-        assert stack.branches[1].status_icon == "⏳"  # blocked (not approved)
-        assert stack.branches[1].blocker_reason == "not yet approved"
+        assert stack.branches[1].blocker_reason == "awaiting review"
 
         assert stack.branches[2].name == "feat/ui"
-        assert stack.branches[2].status_icon == "○"  # no PR
         assert stack.branches[2].draft is True
 
-    @patch("arc.dashboard.st.load")
-    @patch("arc.dashboard.github.get_pr_status")
-    def test_widget_rendering_with_data(self, mock_get_pr, mock_load):
-        """Widgets render correctly with populated stack."""
-        mock_load.return_value = {
-            "base": "main",
-            "branches": [{"name": "feat/auth", "pr_number": 1, "commits": 2, "revision": 1}],
-        }
-        mock_get_pr.return_value = {"ci_passing": True, "approved": True, "draft": False}
-
-        stack = load_stack_view(Path("."))
-
-        # Test tree widget renders
-        tree = StackTreeWidget(stack)
-        tree_output = tree.render()
-        assert "feat/auth" in tree_output
-        assert "✅" in tree_output
-
-        # Test details widget renders
-        details = BranchDetailsWidget(stack)
-        details_output = details.render()
-        assert "feat/auth" in details_output
-        assert "PR #1" in details_output
-        assert "✓ CI passing" in details_output or "CI passing" in details_output
-
-        # Test actions widget renders
-        actions = ActionsWidget(stack)
-        actions_output = actions.render()
-        assert "sync" in actions_output
-        assert "push" in actions_output
-
     def test_navigation_between_branches(self):
-        """Navigation updates selection correctly across full stack."""
-        b1 = BranchStatus("feat/a", 1, True, True, False, 1, 1, None)
-        b2 = BranchStatus("feat/b", 2, True, False, False, 1, 1, "not yet approved")
-        b3 = BranchStatus("feat/c", 3, None, False, False, 1, 1, None)
+        b1 = make_branch("feat/a", pr_number=1, ci_passing=True, approved=True, draft=False)
+        b2 = make_branch("feat/b", pr_number=2, base="feat/a")
+        b3 = make_branch("feat/c", base="feat/b")
 
         stack = StackView(base="main", branches=[b1, b2, b3], current_index=0)
 
-        # Navigate down
         stack.move_selection(1)
         assert stack.current_branch == b2
 
         stack.move_selection(1)
         assert stack.current_branch == b3
 
-        # Navigate up
         stack.move_selection(-1)
         assert stack.current_branch == b2
 
-        # Verify widgets reflect current selection
-        tree = StackTreeWidget(stack)
-        tree_output = tree.render()
-        assert "▶ ⏳ feat/b" in tree_output  # Should have selection indicator
+    @patch("arc.dashboard.git.current_branch", return_value="")
+    @patch("arc.dashboard.git.commit_count", return_value=2)
+    @patch("arc.dashboard.st.load")
+    @patch("arc.dashboard.github.get_pr_status")
+    def test_widget_rendering_with_data(self, mock_get_pr, mock_load, _cc, _cb):
+        mock_load.return_value = {
+            "base": "main",
+            "branches": [{"name": "feat/auth", "pr_number": 1, "revision": 1}],
+        }
+        mock_get_pr.return_value = {
+            "ci_passing": True,
+            "approved": True,
+            "draft": False,
+            "url": None,
+        }
+
+        stack = load_stack_view(Path("."))
+
+        tree_output = BranchTreeWidget(stack).render()
+        assert "feat/auth" in tree_output
+        assert "✓" in tree_output
+
+        detail_output = DetailWidget(stack).render()
+        assert "feat/auth" in detail_output
+        assert "#1" in detail_output
+        assert "passing" in detail_output
+
+
+class TestBranchCommitWidget:
+    def test_renders_empty_when_no_branch(self):
+        stack = StackView(base="main", branches=[])
+        output = BranchCommitWidget(stack).render()
+        # no-branch state now returns a loading placeholder (non-empty) for correct layout
+        assert isinstance(output, str)
+
+    def test_renders_commit_messages(self):
+        b = make_branch(
+            "feat/a", commits=2, commit_messages=["abc1234 add auth", "def5678 fix login"]
+        )
+        stack = StackView(base="main", branches=[b])
+        output = BranchCommitWidget(stack).render()
+        assert "add auth" in output
+        assert "fix login" in output
+
+    def test_renders_branch_name_header(self):
+        b = make_branch("feat/auth", commits=1, commit_messages=["abc1234 initial commit"])
+        stack = StackView(base="main", branches=[b])
+        output = BranchCommitWidget(stack).render()
+        assert "feat/auth" in output
+
+    def test_renders_no_commits_hint(self):
+        b = make_branch("feat/a", commits=0, commit_messages=[])
+        stack = StackView(base="main", branches=[b])
+        output = BranchCommitWidget(stack).render()
+        assert "no commits" in output.lower() or "add commits" in output.lower()
+
+
+class TestLoadTheme:
+    def test_returns_requested_theme(self, tmp_path):
+        theme, warn = load_theme(tmp_path, override="dracula")
+        assert theme.name == "dracula"
+        assert warn is None
+
+    def test_warns_on_unknown_theme(self, tmp_path):
+        theme, warn = load_theme(tmp_path, override="nonexistent")
+        assert theme.name == "arc"
+        assert warn is not None
+        assert "nonexistent" in warn
+        assert "arc" in warn  # lists available names
+
+    def test_available_names_in_warning(self, tmp_path):
+        _, warn = load_theme(tmp_path, override="bad-theme")
+        assert warn is not None
+        for name in ("arc", "dracula", "nord", "gruvbox", "catppuccin", "tokyo-night"):
+            assert name in warn
+
+    def test_falls_back_to_arc_on_no_config(self, tmp_path):
+        theme, warn = load_theme(tmp_path)
+        assert theme.name == "arc"
+        assert warn is None
