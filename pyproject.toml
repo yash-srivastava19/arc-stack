@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "arc-prs"
+version = "0.7.2"
+description = "Local CLI for managing stacked pull requests"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+keywords = ["git", "stacked-prs", "pull-requests", "developer-tools", "github", "cli", "code-review"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Version Control :: Git",
+    "Topic :: Utilities",
+    "Typing :: Typed",
+]
+dependencies = [
+    "click>=8.1",
+    "rich>=13.0",
+    "textual>=0.40.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/yash-srivastava19/arc-stack"
+Repository = "https://github.com/yash-srivastava19/arc-stack"
+Changelog = "https://github.com/yash-srivastava19/arc-stack/blob/main/CHANGELOG.md"
+"Bug Tracker" = "https://github.com/yash-srivastava19/arc-stack/issues"
+
+[project.scripts]
+arc = "arc.cli:cli"
+
+[dependency-groups]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov",
+    "vcrpy>=8.1.1",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["arc"]
+include = ["arc/py.typed"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[tool.pytest.ini_options]
+markers = [
+    "unit: pure logic tests, no I/O",
+    "git: requires a real local git repository",
+    "api: uses vcrpy cassettes for GitHub API",
+    "e2e: requires Forgejo Docker; apply to tests needing a live git server — not used in standard CI",
+]
