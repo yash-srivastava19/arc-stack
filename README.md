@@ -41,7 +41,7 @@ arc dashboard --theme nord
 
 ## Status
 
-- Version: `0.7.2`
+- Version: `0.8.0`
 - Python: `3.11` to `3.13`
 - CI: GitHub Actions
 - Changelog: [CHANGELOG.md](https://github.com/yash-srivastava19/arc-stack/blob/main/CHANGELOG.md)
