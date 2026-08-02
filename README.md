@@ -48,6 +48,7 @@ arc dashboard --theme nord
 - Security: [SECURITY.md](SECURITY.md)
 
 **What arc handles for you:**
+- Native GitHub stack integration - registers every stack with GitHub's own stacked-PR API as you submit, so you get GitHub's stack map and atomic bottom-up merge in the UI while arc keeps driving the actual git work (rebase, conflict recovery, signed commits) locally
 - Cascade rebases - one `arc sync` propagates a change from the bottom branch to the top
 - Resumable conflict recovery - a mid-cascade conflict pauses in place; `arc rebase --continue` picks up where it left off instead of starting over
 - PR creation and updates - `arc submit` opens all PRs with correct bases and injects a stack map into each description
