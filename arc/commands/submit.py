@@ -79,7 +79,12 @@ def _upsert_pr(
                 err.print(
                     f"→ retargeting PR #{pr_number} ({name}): {existing['baseRefName']} → {base}"
                 )
-            github.update_pr_base(pr_number, base)
+            ok = github.update_pr_base(pr_number, base)
+            if not ok and not quiet:
+                err.print(
+                    f"  warning: could not retarget PR #{pr_number} — base may be wrong",
+                    style="yellow",
+                )
         if mark_open:
             github.mark_pr_ready(pr_number)
         entry = {
