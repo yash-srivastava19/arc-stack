@@ -176,7 +176,7 @@ Force-pushes all stack branches to remote in order (bottom to top). Increments e
 arc submit [--draft | --open] [--skip-hooks] [-n] [-q] [--json]
 ```
 
-Creates or updates PRs for each branch in the stack. Each PR targets the branch below it (or the base for the bottommost). Injects a stack map into every PR description. Fires `pre-submit` and `post-submit` hooks.
+Creates or updates PRs for each branch in the stack. Each PR targets the branch below it (or the base for the bottommost). Injects a stack map into every PR description. Once 2+ PRs exist, also registers the chain as a native GitHub stack (see [Configuration](config.md#link_github_stack)). Fires `pre-submit` and `post-submit` hooks.
 
 | Flag | Description |
 |------|-------------|

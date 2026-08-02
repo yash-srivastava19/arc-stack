@@ -29,7 +29,9 @@ Committed to the repo and shared with your team. Create it with `arc config set`
   },
   "feedback": {
     "enabled": true
-  }
+  },
+  "auto_promote_on_land": true,
+  "link_github_stack": true
 }
 ```
 
@@ -57,6 +59,14 @@ Controls whether arc periodically shows usage hints. Default: `true`. Set to `fa
 ```bash
 arc config set feedback.enabled false
 ```
+
+### auto_promote_on_land
+
+After `arc land`, automatically mark the new bottom-of-stack PR as ready for review. Default: `true`. Set to `false` to keep the next PR in draft.
+
+### link_github_stack
+
+After `arc submit`, once 2+ PRs exist in the chain, register it as a native GitHub stack via GitHub's stack REST API — no third-party CLI extension required. Gets you github.com's own stack UI (stack map, atomic bottom-up merge) on top of PRs arc is still driving underneath. Best-effort: a failure never blocks `arc submit`. Default: `true`. Set to `false` to skip it.
 
 ---
 
