@@ -1,7 +1,7 @@
 [![PyPI](https://img.shields.io/pypi/v/arc-prs.svg)](https://pypi.org/project/arc-prs/)
 [![Python](https://img.shields.io/pypi/pyversions/arc-prs.svg)](https://pypi.org/project/arc-prs/)
 [![CI](https://github.com/yash-srivastava19/arc-stack/actions/workflows/ci.yml/badge.svg)](https://github.com/yash-srivastava19/arc-stack/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/yash-srivastava19/arc-stack/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-arc--docs.netlify.app-blue)](https://arc-pr-docs.netlify.app)
 
 # arc
@@ -11,29 +11,29 @@ Stacked PRs without the manual overhead.
 `arc` keeps a branch stack current, opens the PRs for each layer, and restacks
 the branches above when one merges.
 
-![arc demo](assets/demo.gif)
+![arc demo](https://raw.githubusercontent.com/yash-srivastava19/arc-stack/main/assets/demo.gif)
 
 ### Dashboard themes
 
 `arc dashboard` ships with 6 built-in themes. Pick the one that matches your terminal:
 
 **arc** (default)
-![arc theme](assets/arc-dashboard-arc.svg)
+![arc theme](https://raw.githubusercontent.com/yash-srivastava19/arc-stack/main/assets/arc-dashboard-arc.svg)
 
 **dracula**
-![dracula theme](assets/arc-dashboard-dracula.svg)
+![dracula theme](https://raw.githubusercontent.com/yash-srivastava19/arc-stack/main/assets/arc-dashboard-dracula.svg)
 
 **nord**
-![nord theme](assets/arc-dashboard-nord.svg)
+![nord theme](https://raw.githubusercontent.com/yash-srivastava19/arc-stack/main/assets/arc-dashboard-nord.svg)
 
 **gruvbox**
-![gruvbox theme](assets/arc-dashboard-gruvbox.svg)
+![gruvbox theme](https://raw.githubusercontent.com/yash-srivastava19/arc-stack/main/assets/arc-dashboard-gruvbox.svg)
 
 **catppuccin**
-![catppuccin theme](assets/arc-dashboard-catppuccin.svg)
+![catppuccin theme](https://raw.githubusercontent.com/yash-srivastava19/arc-stack/main/assets/arc-dashboard-catppuccin.svg)
 
 **tokyo-night**
-![tokyo-night theme](assets/arc-dashboard-tokyo-night.svg)
+![tokyo-night theme](https://raw.githubusercontent.com/yash-srivastava19/arc-stack/main/assets/arc-dashboard-tokyo-night.svg)
 
 ```bash
 arc dashboard --theme nord
@@ -44,8 +44,8 @@ arc dashboard --theme nord
 - Version: `0.7.2`
 - Python: `3.11` to `3.13`
 - CI: GitHub Actions
-- Changelog: [CHANGELOG.md](CHANGELOG.md)
-- Security: [SECURITY.md](SECURITY.md)
+- Changelog: [CHANGELOG.md](https://github.com/yash-srivastava19/arc-stack/blob/main/CHANGELOG.md)
+- Security: [SECURITY.md](https://github.com/yash-srivastava19/arc-stack/blob/main/SECURITY.md)
 
 **What arc handles for you:**
 - Native GitHub stack integration - registers every stack with GitHub's own stacked-PR API as you submit, so you get GitHub's stack map and atomic bottom-up merge in the UI while arc keeps driving the actual git work (rebase, conflict recovery, signed commits) locally
@@ -162,11 +162,11 @@ Reviewers can navigate the whole stack from any PR without hunting for context.
 
 Once two or more PRs exist, `arc submit` also registers the chain as a native GitHub stack - no extra step needed. This gets you github.com's own stack UI (stack map, per-layer diffs, atomic bottom-up merge) on top of PRs `arc` is still driving underneath. Disable it with `{"link_github_stack": false}` in `.arc/config.json`.
 
-![GitHub stack badge on a PR opened by arc](assets/arc-github-stack-badge.jpg)
+![GitHub stack badge on a PR opened by arc](https://raw.githubusercontent.com/yash-srivastava19/arc-stack/main/assets/arc-github-stack-badge.jpg)
 
 Click the stack badge to see the full map GitHub builds from the same chain `arc` already manages:
 
-![GitHub's native stack map for an arc-managed stack](assets/arc-github-stack-map.png)
+![GitHub's native stack map for an arc-managed stack](https://raw.githubusercontent.com/yash-srivastava19/arc-stack/main/assets/arc-github-stack-map.png)
 
 When you're ready to open for review, `arc submit --open` marks all drafts as ready at once.
 
