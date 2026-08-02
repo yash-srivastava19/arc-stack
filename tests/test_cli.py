@@ -673,6 +673,33 @@ def test_submit_retargets_stale_pr_base(tmp_path):
     assert (42, "main") in retargeted, "PR should be retargeted to 'main' (the computed base)"
 
 
+def test_submit_warns_when_retarget_fails(tmp_path):
+    """arc submit warns (doesn't silently swallow) when update_pr_base fails —
+    e.g. GitHub rejects base changes for PRs registered in a native stack."""
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.get_commit_subject", return_value="feat"),
+        patch("arc.git.get_commit_body", return_value=""),
+        patch("arc.git.commit_count", return_value=1),
+        patch(
+            "arc.github.get_pr",
+            return_value={
+                "number": 42,
+                "url": "https://gh/42",
+                "state": "OPEN",
+                "baseRefName": "old-base",
+            },
+        ),
+        patch("arc.github.update_pr_body"),
+        patch("arc.github.update_pr_base", return_value=False),
+    ):
+        result = runner.invoke(cli, ["submit"])
+    assert result.exit_code == 0
+    assert "could not retarget PR #42" in result.output
+
+
 def test_submit_no_retarget_when_base_unchanged(tmp_path):
     """arc submit does not call update_pr_base when the PR base already matches."""
     # Single-branch stack: computed base is "main", PR already targets "main"
