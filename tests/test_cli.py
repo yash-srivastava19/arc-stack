@@ -783,6 +783,79 @@ def test_submit_skip_hooks(tmp_path):
     assert result.exit_code == 0
 
 
+def test_submit_links_github_stack_when_two_or_more_prs(tmp_path):
+    _write_state_no_prs(tmp_path)
+    linked = []
+    created = []
+
+    def fake_create(branch, base, title, body, draft):
+        n = len(created) + 50
+        created.append(n)
+        return {"number": n, "url": f"https://gh/{n}"}
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.get_commit_subject", return_value="feat"),
+        patch("arc.git.get_commit_body", return_value=""),
+        patch("arc.git.commit_count", return_value=1),
+        patch("arc.github.get_pr", return_value=None),
+        patch("arc.github.create_pr", side_effect=fake_create),
+        patch("arc.github.link_stack", side_effect=lambda prs: linked.append(prs) or True),
+    ):
+        result = runner.invoke(cli, ["submit", "--draft"])
+    assert result.exit_code == 0
+    assert linked == [[50, 51]]
+    assert "linked stack on GitHub" in result.output
+
+
+def test_submit_skips_link_for_single_branch_stack(tmp_path):
+    _write_state(tmp_path, branches=[{"name": "feat/auth", "pr_number": 42, "revision": 1}])
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.get_commit_subject", return_value="feat"),
+        patch("arc.git.get_commit_body", return_value=""),
+        patch("arc.git.commit_count", return_value=1),
+        patch(
+            "arc.github.get_pr",
+            return_value={
+                "number": 42,
+                "url": "https://gh/42",
+                "state": "OPEN",
+                "baseRefName": "main",
+            },
+        ),
+        patch("arc.github.update_pr_body"),
+        patch("arc.github.link_stack") as mock_link,
+    ):
+        result = runner.invoke(cli, ["submit"])
+    assert result.exit_code == 0
+    mock_link.assert_not_called()
+
+
+def test_submit_link_disabled_by_config(tmp_path):
+    _write_state_no_prs(tmp_path)
+    (tmp_path / ".arc" / "config.json").write_text(_json.dumps({"link_github_stack": False}))
+
+    def fake_create(branch, base, title, body, draft):
+        return {"number": 50, "url": "https://gh/50"}
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.get_commit_subject", return_value="feat"),
+        patch("arc.git.get_commit_body", return_value=""),
+        patch("arc.git.commit_count", return_value=1),
+        patch("arc.github.get_pr", return_value=None),
+        patch("arc.github.create_pr", side_effect=fake_create),
+        patch("arc.github.link_stack") as mock_link,
+    ):
+        result = runner.invoke(cli, ["submit", "--draft"])
+    assert result.exit_code == 0
+    mock_link.assert_not_called()
+
+
 def test_submit_dry_run(tmp_path):
     _write_state_no_prs(tmp_path)
     runner = CliRunner()

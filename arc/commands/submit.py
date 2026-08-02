@@ -103,6 +103,25 @@ def _upsert_pr(
     return data, entry, created, updated
 
 
+def _maybe_link_github_stack(data: StackState, cfg: dict, quiet: bool) -> None:
+    """Register the branch chain as a native GitHub stack, so github.com's stack
+    UI (stack map, atomic bottom-up merge) recognizes PRs arc already manages.
+
+    Disable with: { "link_github_stack": false } in .arc/config.json
+    """
+    if not cfg.get("link_github_stack", True):
+        return
+    pr_numbers = [b["pr_number"] for b in data["branches"] if b["pr_number"] is not None]
+    if len(pr_numbers) < 2:
+        return
+    linked = github.link_stack(pr_numbers)
+    if not quiet:
+        if linked:
+            err.print("→ linked stack on GitHub (native stack UI enabled).", style="dim")
+        else:
+            err.print("→ could not link GitHub stack (skipping).", style="dim")
+
+
 @click.command("submit")
 @click.option("--draft", is_flag=True, default=True)
 @click.option("--open", "mark_open", is_flag=True, default=False)
@@ -163,6 +182,9 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
             out.print_json(_json.dumps({"created": created, "updated": updated}))
         elif not quiet and not dry_run:
             err.print("PRs ready. View your stack with 'arc status'.")
+
+        if not dry_run:
+            _maybe_link_github_stack(data, cfg, quiet)
 
         if not quiet and not dry_run:
             for b in data["branches"]:
