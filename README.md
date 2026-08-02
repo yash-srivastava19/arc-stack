@@ -48,13 +48,13 @@ arc dashboard --theme nord
 - Security: [SECURITY.md](SECURITY.md)
 
 **What arc handles for you:**
-- Cascade rebases — one `arc sync` propagates a change from the bottom branch to the top
-- Resumable conflict recovery — a mid-cascade conflict pauses in place; `arc rebase --continue` picks up where it left off instead of starting over
-- PR creation and updates — `arc submit` opens all PRs with correct bases and injects a stack map into each description
-- Squash-merge recovery — detects squash-merged branches and restacks automatically
-- Conflict prediction — warns before rebasing when adjacent branches touch the same files
-- Lifecycle hooks — gate or notify on any arc event via plain executables in `.arc/hooks/`
-- Scripting-friendly — `--json`, `--plain`, `--dry-run`, and structured exit codes on every command
+- Cascade rebases - one `arc sync` propagates a change from the bottom branch to the top
+- Resumable conflict recovery - a mid-cascade conflict pauses in place; `arc rebase --continue` picks up where it left off instead of starting over
+- PR creation and updates - `arc submit` opens all PRs with correct bases and injects a stack map into each description
+- Squash-merge recovery - detects squash-merged branches and restacks automatically
+- Conflict prediction - warns before rebasing when adjacent branches touch the same files
+- Lifecycle hooks - gate or notify on any arc event via plain executables in `.arc/hooks/`
+- Scripting-friendly - `--json`, `--plain`, `--dry-run`, and structured exit codes on every command
 
 ---
 
@@ -102,7 +102,7 @@ Initialize `arc` in your repo once:
 arc init --base main --prefix feat
 ```
 
-This creates `.arc/state.json` (git-ignored, per-clone) and adds it to `.gitignore`. The `--prefix` is optional — if set, `arc new auth` creates `feat/auth` instead of `auth`.
+This creates `.arc/state.json` (git-ignored, per-clone) and adds it to `.gitignore`. The `--prefix` is optional - if set, `arc new auth` creates `feat/auth` instead of `auth`.
 
 Then build your stack branch by branch as you work:
 
@@ -131,14 +131,14 @@ When `main` moves or you amend a lower branch, run:
 arc sync
 ```
 
-This fetches the latest from remote and cascades a rebase bottom-up through the stack — `feat/auth` onto `main`, `feat/api` onto `feat/auth`, `feat/ui` onto `feat/api`. If there's a conflict, `arc` pauses the rebase right there and tells you exactly which files to fix:
+This fetches the latest from remote and cascades a rebase bottom-up through the stack - `feat/auth` onto `main`, `feat/api` onto `feat/auth`, `feat/ui` onto `feat/api`. If there's a conflict, `arc` pauses the rebase right there and tells you exactly which files to fix:
 
 ```
 Conflict in feat/api. Resolve: src/api.py
 Then run 'arc rebase --continue' or 'arc rebase --abort'.
 ```
 
-Resolve the conflict and run `arc rebase --continue` — it finishes `feat/api` and keeps cascading through the rest of the stack (`feat/ui`, and so on), not just the one branch. `arc rebase --abort` rolls every branch back to exactly where it was before the sync started, including any branches that had already rebased cleanly earlier in the same run.
+Resolve the conflict and run `arc rebase --continue` - it finishes `feat/api` and keeps cascading through the rest of the stack (`feat/ui`, and so on), not just the one branch. `arc rebase --abort` rolls every branch back to exactly where it was before the sync started, including any branches that had already rebased cleanly earlier in the same run.
 
 When the stack is clean, push everything and open PRs:
 
@@ -159,7 +159,7 @@ Stack (base: main):
 
 Reviewers can navigate the whole stack from any PR without hunting for context.
 
-Once two or more PRs exist, `arc submit` also registers the chain as a native GitHub stack — no extra step needed. This gets you github.com's own stack UI (stack map, per-layer diffs, atomic bottom-up merge) on top of PRs `arc` is still driving underneath. Disable it with `{"link_github_stack": false}` in `.arc/config.json`.
+Once two or more PRs exist, `arc submit` also registers the chain as a native GitHub stack - no extra step needed. This gets you github.com's own stack UI (stack map, per-layer diffs, atomic bottom-up merge) on top of PRs `arc` is still driving underneath. Disable it with `{"link_github_stack": false}` in `.arc/config.json`.
 
 When you're ready to open for review, `arc submit --open` marks all drafts as ready at once.
 
@@ -175,7 +175,7 @@ arc land feat/auth
 
 `arc` verifies the PR is merged, detects whether it was a squash-merge or a regular merge, rebases `feat/api` and `feat/ui` onto `main` correctly (using `git rebase --onto` for squash-merges, which would otherwise leave duplicate commits), removes `feat/auth` from the stack, and deletes the local branch.
 
-You can land branches in order as they get approved. The rest of the stack stays coherent throughout. If restacking hits a conflict, `arc land` pauses the same way `arc sync` does — resolve it, run `arc rebase --continue`, then re-run `arc land feat/auth -f` to finish (`arc drop` works the same way).
+You can land branches in order as they get approved. The rest of the stack stays coherent throughout. If restacking hits a conflict, `arc land` pauses the same way `arc sync` does - resolve it, run `arc rebase --continue`, then re-run `arc land feat/auth -f` to finish (`arc drop` works the same way).
 
 ---
 
@@ -215,7 +215,7 @@ arc amend   # appends the PR link and stack position to the HEAD commit message
 
 This means `git log` on the landed commits still traces back to the PR.
 
-**Gate submissions on local checks** — configure `.arc/config.json` (committed, shared with your team):
+**Gate submissions on local checks** - configure `.arc/config.json` (committed, shared with your team):
 
 ```json
 {
@@ -229,7 +229,7 @@ This means `git log` on the landed commits still traces back to the PR.
 
 ### Lifecycle hooks
 
-For richer automation, drop executable files into `.arc/hooks/<event>`. Arc fires 8 events: `pre-submit`, `post-submit`, `pre-land`, `post-land`, `pre-sync`, `post-sync`, `pre-push`, and `post-push`. `pre-*` hooks are gates — a non-zero exit aborts the command (exit code 7). `post-*` hooks are notifications — the exit code is ignored. Each hook receives context via environment variables (`ARC_EVENT`, `ARC_BRANCH`, `ARC_BASE`, …) and a JSON object on stdin.
+For richer automation, drop executable files into `.arc/hooks/<event>`. Arc fires 8 events: `pre-submit`, `post-submit`, `pre-land`, `post-land`, `pre-sync`, `post-sync`, `pre-push`, and `post-push`. `pre-*` hooks are gates - a non-zero exit aborts the command (exit code 7). `post-*` hooks are notifications - the exit code is ignored. Each hook receives context via environment variables (`ARC_EVENT`, `ARC_BRANCH`, `ARC_BASE`, …) and a JSON object on stdin.
 
 ```bash
 $ cat .arc/hooks/pre-submit
@@ -249,7 +249,7 @@ arc push -n    # shows which branches would be pushed
 arc land -n    # shows which branches would be restacked
 ```
 
-**Interactive dashboard** — a live TUI that gives you a full picture of your stack at a glance:
+**Interactive dashboard** - a live TUI that gives you a full picture of your stack at a glance:
 
 ```bash
 arc dashboard
@@ -258,24 +258,24 @@ arc dashboard --theme dracula   # arc | dracula | nord | gruvbox | catppuccin | 
 
 The dashboard loads local state instantly and then enriches each branch with live GitHub data in the background. It shows:
 
-- **Stack tree** (left panel) — your branches in order, with depth indentation and `├──`/`└──` connectors. Each branch shows its PR status (`✓ approved`, `⚙ CI running`, `✗ CI failing`, `⬡ draft`, `○ no PR`) and commit count. A `▶` cursor marks your selection; `◀ HEAD` marks the checked-out branch.
-- **Commit log** (below tree) — the 20 most recent commits on the selected branch with short SHA, subject, relative time, and author. Context-aware hints at the bottom suggest the next natural action (open a PR, fix CI, request review, etc.).
-- **Detail panel** (right) — full PR info including URL, CI state, approval status, and the exact `arc` commands to move forward.
-- **Output log** (below detail) — live output of any arc command you run from the dashboard.
+- **Stack tree** (left panel) - your branches in order, with depth indentation and `├──`/`└──` connectors. Each branch shows its PR status (`✓ approved`, `⚙ CI running`, `✗ CI failing`, `⬡ draft`, `○ no PR`) and commit count. A `▶` cursor marks your selection; `◀ HEAD` marks the checked-out branch.
+- **Commit log** (below tree) - the 20 most recent commits on the selected branch with short SHA, subject, relative time, and author. Context-aware hints at the bottom suggest the next natural action (open a PR, fix CI, request review, etc.).
+- **Detail panel** (right) - full PR info including URL, CI state, approval status, and the exact `arc` commands to move forward.
+- **Output log** (below detail) - live output of any arc command you run from the dashboard.
 
 Keybindings inside the dashboard:
 
 | Key | Action |
 |-----|--------|
 | `j` / `k` | Move up/down the stack |
-| `s` | `arc sync` — fetch and cascade-rebase |
-| `p` | `arc push` — force-push all branches |
-| `l` | `arc land` — land the selected branch |
-| `r` | `arc restack` — restack selected branch only |
+| `s` | `arc sync` - fetch and cascade-rebase |
+| `p` | `arc push` - force-push all branches |
+| `l` | `arc land` - land the selected branch |
+| `r` | `arc restack` - restack selected branch only |
 | `R` | Refresh GitHub data |
-| `c` | `arc checkout` — switch to selected branch |
-| `n` | `arc new` — create a new branch |
-| `a` | `arc stack analyze` — show critical path and blockers |
+| `c` | `arc checkout` - switch to selected branch |
+| `n` | `arc new` - create a new branch |
+| `a` | `arc stack analyze` - show critical path and blockers |
 | `o` | Open selected PR in browser |
 | `Ctrl+S` | Save SVG screenshot |
 | `?` | Help overlay |
@@ -341,7 +341,7 @@ arc sync -n && arc push -n && arc submit -n
 
 | Code | Meaning | What to do |
 |------|---------|------------|
-| 0 | Success | — |
+| 0 | Success | - |
 | 1 | Error | Read stderr |
 | 2 | Not in a stack | `arc init` |
 | 3 | Rebase conflict | Resolve, then `arc rebase --continue` or `--abort` |
