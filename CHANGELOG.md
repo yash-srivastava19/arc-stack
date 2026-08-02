@@ -4,6 +4,10 @@ All notable changes to arc are documented here.
 
 ---
 
+## [0.8.0] — 2026-08-02
+
+---
+
 ## [0.7.2] — 2026-07-13
 
 ---
