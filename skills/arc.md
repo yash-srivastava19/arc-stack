@@ -220,13 +220,15 @@ Field notes:
 
 ```json
 {
-  "auto_promote_on_land": true
+  "auto_promote_on_land": true,
+  "link_github_stack": true
 }
 ```
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `auto_promote_on_land` | `true` | After `arc land`, automatically mark the new bottom-of-stack PR as ready for review. Set to `false` to keep the next PR in draft. |
+| `link_github_stack` | `true` | After `arc submit`, register the branch chain as a native GitHub stack (github.com's stack UI: stack map, atomic bottom-up merge) once 2+ PRs exist. Uses GitHub's REST stack API directly — no third-party CLI extension required. Best-effort: a failure never blocks `arc submit`. Set to `false` to skip it. |
 
 ---
 
