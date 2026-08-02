@@ -269,6 +269,99 @@ def test_add_fails_if_already_in_stack(tmp_path):
     assert result.exit_code == 1
 
 
+def test_new_auto_heals_when_bottom_branch_merged(tmp_path):
+    """arc new lands an already-merged stack-bottom branch automatically
+    instead of silently branching off a stale HEAD (the sibling-branch bug:
+    arc new right after a merge, before landing, used to create a branch
+    that state.json called 'stacked' but git never actually chained)."""
+    _write_state(tmp_path, branches=[{"name": "feat/auth", "pr_number": 42, "revision": 1}])
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="main"),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value=None),
+        patch("arc.git.checkout"),
+        patch("arc.git.delete_branch"),
+        patch("arc.git.create_branch") as mock_create,
+    ):
+        result = runner.invoke(cli, ["new", "feat/api"])
+    assert result.exit_code == 0, result.output
+    mock_create.assert_called_once_with("feat/api", "HEAD")
+    assert "landing it before creating" in result.output.lower()
+    data = _json.loads((tmp_path / ".arc" / "state.json").read_text())
+    assert [b["name"] for b in data["branches"]] == ["feat/api"]
+
+
+def test_new_errors_when_head_mismatched_and_not_merged(tmp_path):
+    """A HEAD/state mismatch that isn't explained by a merged PR is genuinely
+    ambiguous — arc new must refuse rather than guess."""
+    _write_state(tmp_path, branches=[{"name": "feat/auth", "pr_number": 42, "revision": 1}])
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="main"),
+        patch("arc.github.pr_is_merged", return_value=False),
+        patch("arc.git.create_branch") as mock_create,
+    ):
+        result = runner.invoke(cli, ["new", "feat/api"])
+    assert result.exit_code == 1
+    assert "head is on 'main'" in result.output.lower()
+    assert "feat/auth" in result.output
+    mock_create.assert_not_called()
+
+
+def test_new_no_auto_heal_when_head_already_matches(tmp_path):
+    """No merge-status check (or any healing) happens when HEAD already
+    matches the stack's top — the common case must stay a single fast path."""
+    _write_state(tmp_path, branches=[{"name": "feat/auth", "pr_number": 42, "revision": 1}])
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.create_branch") as mock_create,
+        patch("arc.github.pr_is_merged") as mock_merged,
+    ):
+        result = runner.invoke(cli, ["new", "feat/api"])
+    assert result.exit_code == 0, result.output
+    mock_create.assert_called_once_with("feat/api", "HEAD")
+    mock_merged.assert_not_called()
+
+
+def test_new_auto_heals_multiple_merged_branches_in_order(tmp_path):
+    """The auto-heal loop keeps landing already-merged branches bottom-up
+    until HEAD matches, not just a single step."""
+    from arc import state as st
+
+    _write_state(
+        tmp_path,
+        branches=[
+            {"name": "feat/auth", "pr_number": 42, "revision": 1},
+            {"name": "feat/api", "pr_number": 43, "revision": 1},
+        ],
+    )
+    landed = []
+
+    def fake_land_branch(root, data, target, **kwargs):
+        landed.append(target)
+        data = st.remove_branch(data, target)
+        st.save(root, data)
+        return data
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="main"),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.commands.stack.land_branch", side_effect=fake_land_branch),
+        patch("arc.git.create_branch") as mock_create,
+    ):
+        result = runner.invoke(cli, ["new", "feat/ui"])
+    assert result.exit_code == 0, result.output
+    assert landed == ["feat/auth", "feat/api"]
+    mock_create.assert_called_once_with("feat/ui", "HEAD")
+
+
 def test_new_rejects_reserved_tip_name(tmp_path):
     _write_state(tmp_path)
     runner = CliRunner()

@@ -305,6 +305,73 @@ def _maybe_auto_promote(above: list[str], data: StackState, root, quiet: bool) -
         github.mark_pr_ready(promote_pr)
 
 
+def land_branch(
+    root,
+    data: StackState,
+    target: str,
+    *,
+    keep_branch: bool = False,
+    skip_hooks: bool = False,
+    quiet: bool = False,
+    output_json: bool = False,
+) -> StackState:
+    """Land one already-merged branch: retarget/restack branches above it,
+    remove it from the stack, delete the local branch, check out its parent.
+
+    Caller must have already verified the branch's PR is merged. Shared by
+    `arc land` and `arc new`'s auto-heal (a stale registered stack top whose
+    PR already merged gets landed automatically before the new branch is
+    created, instead of silently branching off the wrong commit).
+    """
+    b = st.get_branch(data, target)
+    assert b is not None
+    parent = ops.parent_branch(data, target)
+    above = ops.upstack_branches(data, target)
+    merge_sha = github.get_merge_commit_sha(b["pr_number"])
+    squash_merged = bool(merge_sha) and not git.is_ancestor(git.get_sha(target), parent)
+
+    _shared.run_lifecycle_hook(
+        root,
+        data,
+        "pre-land",
+        branch=target,
+        extra={"pr_number": b["pr_number"]},
+        skip=skip_hooks,
+        output_json=output_json,
+        quiet=quiet,
+    )
+
+    _retarget_above_prs(above, data, parent, quiet)
+    _restack_above_branches(above, squash_merged, target, parent, quiet, root)
+
+    if not keep_branch:
+        git.checkout(parent)
+        git.delete_branch(target)
+
+    data = st.remove_branch(data, target)
+    st.save(root, data)
+    tip.sync_tip_branch(data)
+
+    _maybe_auto_promote(above, data, root, quiet)
+
+    _shared.run_lifecycle_hook(
+        root,
+        data,
+        "post-land",
+        branch=target,
+        extra={"pr_number": b["pr_number"]},
+        skip=skip_hooks,
+        output_json=output_json,
+        quiet=quiet,
+    )
+
+    if not quiet:
+        n_above = len(above)
+        err.print(f"{target} landed. {n_above} branch{'es' if n_above != 1 else ''} restacked.")
+
+    return data
+
+
 @click.command("land")
 @click.argument("branch", required=False)
 @click.option("-f", "--force", is_flag=True)
@@ -338,12 +405,11 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
         err.print(f"PR #{b['pr_number']} ({target}) is not merged yet.")
         sys.exit(1)
 
-    parent = ops.parent_branch(data, target)
-    above = ops.upstack_branches(data, target)
-    merge_sha = github.get_merge_commit_sha(b["pr_number"])
-    squash_merged = bool(merge_sha) and not git.is_ancestor(git.get_sha(target), parent)
-
     if dry_run:
+        parent = ops.parent_branch(data, target)
+        above = ops.upstack_branches(data, target)
+        merge_sha = github.get_merge_commit_sha(b["pr_number"])
+        squash_merged = bool(merge_sha) and not git.is_ancestor(git.get_sha(target), parent)
         strategy = "squash-merge" if squash_merged else "regular merge"
         err.print(f"\\[dry-run] land {target} ({strategy})")
         for ab in above:
@@ -358,42 +424,14 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
             click.confirm(f"Delete local branch {target!r}?", abort=True)
 
     with _shared.with_error_hint(root):
-        _shared.run_lifecycle_hook(
+        land_branch(
             root,
             data,
-            "pre-land",
-            branch=target,
-            extra={"pr_number": b["pr_number"]},
-            skip=skip_hooks,
-            output_json=output_json,
+            target,
+            keep_branch=keep_branch,
+            skip_hooks=skip_hooks,
             quiet=quiet,
-        )
-
-        _retarget_above_prs(above, data, parent, quiet)
-        _restack_above_branches(above, squash_merged, target, parent, quiet, root)
-
-        if not keep_branch:
-            git.checkout(parent)
-            git.delete_branch(target)
-
-        data = st.remove_branch(data, target)
-        st.save(root, data)
-        tip.sync_tip_branch(data)
-
-        _maybe_auto_promote(above, data, root, quiet)
-
-        _shared.run_lifecycle_hook(
-            root,
-            data,
-            "post-land",
-            branch=target,
-            extra={"pr_number": b["pr_number"]},
-            skip=skip_hooks,
             output_json=output_json,
-            quiet=quiet,
         )
-
         if not quiet:
-            n_above = len(above)
-            err.print(f"{target} landed. {n_above} branch{'es' if n_above != 1 else ''} restacked.")
             err.print("Run 'arc status' to see your updated stack.")
