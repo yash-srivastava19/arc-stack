@@ -144,6 +144,107 @@ def test_mark_pr_ready_calls_when_in_draft():
     assert calls[1][1] == {"check": False}
 
 
+def test_get_stack_returns_none_when_not_in_a_stack():
+    with patch("arc.github._run", return_value=mock_result("[]")):
+        assert github.get_stack(42) is None
+
+
+def test_get_stack_returns_first_match():
+    payload = [{"number": 1, "pull_requests": [{"number": 42}, {"number": 43}]}]
+    with patch("arc.github._run", return_value=mock_result(json.dumps(payload))):
+        result = github.get_stack(42)
+    assert result["number"] == 1
+
+
+def test_get_stack_returns_none_on_api_error():
+    with patch("arc.github._run", return_value=mock_result(returncode=1)):
+        assert github.get_stack(42) is None
+
+
+def test_create_stack_calls_gh_api_with_ordered_prs():
+    payload = {"number": 1, "pull_requests": [{"number": 42}, {"number": 43}]}
+    with patch("arc.github._run", return_value=mock_result(json.dumps(payload))) as mock_run:
+        result = github.create_stack([42, 43])
+    assert result["number"] == 1
+    args = mock_run.call_args[0][0]
+    assert args == [
+        "gh",
+        "api",
+        "repos/{owner}/{repo}/stacks",
+        "-X",
+        "POST",
+        "-F",
+        "pull_requests[]=42",
+        "-F",
+        "pull_requests[]=43",
+    ]
+
+
+def test_create_stack_returns_none_on_failure():
+    with patch("arc.github._run", return_value=mock_result(returncode=1)):
+        assert github.create_stack([42, 43]) is None
+
+
+def test_extend_stack_calls_gh_api_with_stack_number():
+    payload = {"number": 1, "pull_requests": [{"number": 42}, {"number": 44}]}
+    with patch("arc.github._run", return_value=mock_result(json.dumps(payload))) as mock_run:
+        result = github.extend_stack(1, [44])
+    assert result["number"] == 1
+    args = mock_run.call_args[0][0]
+    assert args == [
+        "gh",
+        "api",
+        "repos/{owner}/{repo}/stacks/1/add",
+        "-X",
+        "POST",
+        "-F",
+        "pull_requests[]=44",
+    ]
+
+
+def test_link_stack_skips_single_pr():
+    with patch("arc.github._run") as mock_run:
+        assert github.link_stack([42]) is False
+    mock_run.assert_not_called()
+
+
+def test_link_stack_creates_when_no_existing_stack():
+    with (
+        patch("arc.github.get_stack", return_value=None),
+        patch("arc.github.create_stack", return_value={"number": 1}) as mock_create,
+    ):
+        assert github.link_stack([42, 43]) is True
+    mock_create.assert_called_once_with([42, 43])
+
+
+def test_link_stack_extends_existing_stack_with_new_prs_only():
+    existing = {"number": 1, "pull_requests": [{"number": 42}]}
+    with (
+        patch("arc.github.get_stack", return_value=existing),
+        patch("arc.github.extend_stack", return_value={"number": 1}) as mock_extend,
+    ):
+        assert github.link_stack([42, 43]) is True
+    mock_extend.assert_called_once_with(1, [43])
+
+
+def test_link_stack_noop_when_all_prs_already_linked():
+    existing = {"number": 1, "pull_requests": [{"number": 42}, {"number": 43}]}
+    with (
+        patch("arc.github.get_stack", return_value=existing),
+        patch("arc.github.extend_stack") as mock_extend,
+    ):
+        assert github.link_stack([42, 43]) is True
+    mock_extend.assert_not_called()
+
+
+def test_link_stack_returns_false_on_create_failure():
+    with (
+        patch("arc.github.get_stack", return_value=None),
+        patch("arc.github.create_stack", return_value=None),
+    ):
+        assert github.link_stack([42, 43]) is False
+
+
 def test_create_issue_calls_gh_api():
     """Test that create_issue calls gh api and returns parsed result."""
     with patch("arc.github._run") as mock_run:

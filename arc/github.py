@@ -149,6 +149,68 @@ def get_pr_status(pr_number: int) -> dict:
     }
 
 
+def get_stack(pr_number: int) -> dict | None:
+    """Return the native GitHub stack containing pr_number, or None if it isn't in one."""
+    result = _run(
+        ["gh", "api", f"repos/{{owner}}/{{repo}}/stacks?pull_request={pr_number}"],
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    stacks = json.loads(result.stdout)
+    return stacks[0] if stacks else None
+
+
+def create_stack(pr_numbers: list[int]) -> dict | None:
+    """Register an ordered list of PR numbers (bottom to top) as a native GitHub stack."""
+    args = ["gh", "api", "repos/{owner}/{repo}/stacks", "-X", "POST"]
+    for n in pr_numbers:
+        # -F (not -f): the API requires pull_requests[] entries as JSON integers,
+        # not strings. -f always sends string-typed form values; -F sends typed
+        # values and infers int from an unquoted numeric argument.
+        args += ["-F", f"pull_requests[]={n}"]
+    result = _run(args, check=False)
+    if result.returncode != 0:
+        return None
+    return json.loads(result.stdout)
+
+
+def extend_stack(stack_number: int, pr_numbers: list[int]) -> dict | None:
+    """Append PR numbers to the top of an existing native GitHub stack."""
+    args = [
+        "gh",
+        "api",
+        f"repos/{{owner}}/{{repo}}/stacks/{stack_number}/add",
+        "-X",
+        "POST",
+    ]
+    for n in pr_numbers:
+        args += ["-F", f"pull_requests[]={n}"]
+    result = _run(args, check=False)
+    if result.returncode != 0:
+        return None
+    return json.loads(result.stdout)
+
+
+def link_stack(pr_numbers: list[int]) -> bool:
+    """Register (or extend) an ordered chain of PRs (bottom to top) as a native
+    GitHub stack, so github.com's stack UI recognizes PRs arc already manages.
+
+    Best-effort: returns False on any failure (older GitHub Enterprise version,
+    API error, etc.) rather than raising — this must never block `arc submit`.
+    """
+    if len(pr_numbers) < 2:
+        return False
+    existing = get_stack(pr_numbers[0])
+    if not existing:
+        return create_stack(pr_numbers) is not None
+    linked = {p["number"] for p in existing.get("pull_requests", [])}
+    new_numbers = [n for n in pr_numbers if n not in linked]
+    if not new_numbers:
+        return True
+    return extend_stack(existing["number"], new_numbers) is not None
+
+
 def create_issue(title: str, body: str) -> dict | None:
     try:
         result = _run(
