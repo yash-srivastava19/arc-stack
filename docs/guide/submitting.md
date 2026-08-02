@@ -41,6 +41,8 @@ Stack (base: main):
   3. feat/ui   - PR #44
 ```
 
+Once a branch's PR chain has 2+ PRs, `arc submit` also registers it as a native GitHub stack via GitHub's stack REST API — no extra step needed. This gets you github.com's own stack UI (stack map, per-layer diffs, atomic bottom-up merge) on top of PRs arc is still driving underneath. It's best-effort: a failure here never blocks `arc submit`. Disable it with `link_github_stack: false` — see [Configuration](../reference/config.md).
+
 ### Flags
 
 | Flag | Effect |
