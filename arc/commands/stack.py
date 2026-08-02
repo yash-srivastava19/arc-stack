@@ -13,6 +13,7 @@ from arc import graph as _graph
 from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err, out
+from arc.commands.submit import land_branch
 from arc.state import StackState
 
 _HOOKS_README = """\
@@ -97,6 +98,37 @@ def init_cmd(base, prefix, quiet):
         err.print("Run 'arc new <branch>' to create your first branch.")
 
 
+def _auto_heal_stack_head(root, data: StackState, quiet: bool) -> StackState:
+    """If HEAD isn't where the stack expects, and that's because the
+    bottom-most registered branch's PR already merged, land it (and any
+    further already-merged branches above it) automatically before
+    proceeding — so `arc new` never silently branches off the wrong commit.
+
+    Only auto-acts when the reason is unambiguous (a merged PR). Any other
+    mismatch is a genuine "you're somewhere unexpected" situation and still
+    errors, since guessing would be worse than asking.
+    """
+    while True:
+        names = st.branch_names(data)
+        if not names:
+            return data  # nothing registered yet — nothing to heal against
+        expected = names[-1]
+        current = git.current_branch()
+        if current == expected:
+            return data
+        bottom = names[0]
+        b = st.get_branch(data, bottom)
+        assert b is not None
+        if not b["pr_number"] or not github.pr_is_merged(b["pr_number"]):
+            err.print(f"error: HEAD is on {current!r}, but the stack expects {expected!r}.")
+            err.print(f"hint: run 'arc checkout {expected}' first, then 'arc new'.")
+            sys.exit(1)
+        if not quiet:
+            err.print(f"→ {bottom}'s PR is merged — landing it before creating the new branch...")
+        with _shared.with_error_hint(root):
+            data = land_branch(root, data, bottom, quiet=quiet)
+
+
 @click.command("new")
 @click.argument("branch")
 @click.option("-q", "--quiet", is_flag=True)
@@ -104,6 +136,7 @@ def new_cmd(branch, quiet):
     """Create a new branch and add it to the stack."""
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root)
+    data = _auto_heal_stack_head(root, data, quiet)
     name = st.apply_prefix(data, branch)
     if name == tip.TIP_BRANCH:
         err.print(f"{tip.TIP_BRANCH!r} is reserved for 'arc tip'.")
