@@ -43,6 +43,12 @@ Stack (base: main):
 
 Once a branch's PR chain has 2+ PRs, `arc submit` also registers it as a native GitHub stack via GitHub's stack REST API — no extra step needed. This gets you github.com's own stack UI (stack map, per-layer diffs, atomic bottom-up merge) on top of PRs arc is still driving underneath. It's best-effort: a failure here never blocks `arc submit`. Disable it with `link_github_stack: false` — see [Configuration](../reference/config.md).
 
+![GitHub stack badge on a PR opened by arc](/img/github-stack-badge.jpg)
+
+Clicking the badge opens the full stack map GitHub builds from the same chain arc already manages:
+
+![GitHub's native stack map for an arc-managed stack](/img/github-stack-map.png)
+
 ### Flags
 
 | Flag | Effect |

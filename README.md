@@ -162,6 +162,12 @@ Reviewers can navigate the whole stack from any PR without hunting for context.
 
 Once two or more PRs exist, `arc submit` also registers the chain as a native GitHub stack - no extra step needed. This gets you github.com's own stack UI (stack map, per-layer diffs, atomic bottom-up merge) on top of PRs `arc` is still driving underneath. Disable it with `{"link_github_stack": false}` in `.arc/config.json`.
 
+![GitHub stack badge on a PR opened by arc](assets/arc-github-stack-badge.jpg)
+
+Click the stack badge to see the full map GitHub builds from the same chain `arc` already manages:
+
+![GitHub's native stack map for an arc-managed stack](assets/arc-github-stack-map.png)
+
 When you're ready to open for review, `arc submit --open` marks all drafts as ready at once.
 
 ---
