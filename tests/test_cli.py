@@ -2898,3 +2898,110 @@ def test_land_calls_sync_tip_branch(tmp_path):
         result = runner.invoke(cli, ["land", "feat/auth", "-f"])
     assert result.exit_code == 0
     mock_sync.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# Issue #132: land/drop must chain the restack, not flatten it onto the base
+# ---------------------------------------------------------------------------
+
+
+def _write_three_deep(tmp_path, with_prs=False):
+    return _write_state(
+        tmp_path,
+        prefix="feat",
+        branches=[
+            {"name": "feat/auth", "pr_number": 42, "revision": 1},
+            {"name": "feat/api", "pr_number": 43 if with_prs else None, "revision": 1},
+            {"name": "feat/ui", "pr_number": 44 if with_prs else None, "revision": 1},
+        ],
+    )
+
+
+def test_drop_restacks_three_deep_stack_in_chain_not_flat(tmp_path):
+    """Dropping the bottom branch must leave the rest a chain.
+
+    feat/auth -> feat/api -> feat/ui, drop feat/auth: feat/api takes its place
+    on main, but feat/ui belongs on feat/api. Rebasing feat/ui onto main
+    replays feat/api's commits into it and blows up its PR diff.
+    """
+    _write_three_deep(tmp_path)
+    rebase_calls = []
+
+    def fake_rebase_fork_point(onto):
+        rebase_calls.append(onto)
+        return MagicMock(returncode=0)
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
+        patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fork_point),
+    ):
+        result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
+    assert result.exit_code == 0, result.output
+    assert rebase_calls == ["main", "feat/api"]
+
+
+def test_drop_dry_run_shows_chained_plan(tmp_path):
+    """The dry-run must describe what the real run will do."""
+    _write_three_deep(tmp_path)
+    runner = CliRunner()
+    with patch("arc.git.find_repo_root", return_value=tmp_path):
+        result = runner.invoke(cli, ["drop", "feat/auth", "-n"])
+    assert result.exit_code == 0, result.output
+    assert "rebase feat/api onto main" in result.output
+    assert "rebase feat/ui onto feat/api" in result.output
+
+
+def test_land_dry_run_shows_chained_plan(tmp_path):
+    """arc land -n printed a flat plan while the real land chained correctly."""
+    _write_three_deep(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value="squash123"),
+        patch("arc.git.get_sha", return_value="old_sha"),
+        patch("arc.git.is_ancestor", return_value=False),
+    ):
+        result = runner.invoke(cli, ["land", "feat/auth", "-n"])
+    assert result.exit_code == 0, result.output
+    assert "rebase feat/api onto main" in result.output
+    assert "rebase feat/ui onto feat/api" in result.output
+
+
+def test_land_retargets_each_above_pr_to_its_new_parent(tmp_path):
+    """PR bases must follow the same chain as the local rebases.
+
+    Retargeting every PR above the landed branch onto the base is what made
+    feat/ui's PR diff swell to include all of feat/api's commits: GitHub
+    computes the diff against the PR's base, so the local chaining fix alone
+    did not save it.
+    """
+    _write_three_deep(tmp_path, with_prs=True)
+    retargets = []
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.github.pr_is_merged", return_value=True),
+        patch("arc.github.get_merge_commit_sha", return_value="squash123"),
+        patch("arc.github.get_pr_state", return_value="OPEN"),
+        patch(
+            "arc.github.update_pr_base",
+            side_effect=lambda pr, base: retargets.append((pr, base)) or True,
+        ),
+        patch("arc.github.mark_pr_ready"),
+        patch("arc.git.get_sha", return_value="old_sha"),
+        patch("arc.git.checkout"),
+        patch("arc.git.rebase_onto", return_value=MagicMock(returncode=0)),
+        patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.delete_branch"),
+        patch("arc.git.is_ancestor", return_value=False),
+    ):
+        result = runner.invoke(cli, ["land", "feat/auth", "-f"])
+    assert result.exit_code == 0, result.output
+    bases = dict(retargets)
+    assert bases[43] == "main", "feat/api takes the landed branch's place on the base"
+    assert bases[44] == "feat/api", "feat/ui's PR must stay based on feat/api, not main"

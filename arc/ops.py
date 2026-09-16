@@ -39,6 +39,27 @@ def downstack_branches(data: StackState, name: str) -> list[str]:
     return names[: names.index(name) + 1]
 
 
+def restack_plan(data: StackState, removed: str) -> list[RebasePlanStep]:
+    """Plan the rebases for branches above `removed` once it leaves the stack.
+
+    The branch that takes `removed`'s place goes onto `removed`'s parent;
+    every branch above that chains onto the branch below it. Flattening them
+    all onto the parent replays the intervening branches' commits into each
+    PR, which is the whole reason this lives here instead of being open-coded
+    in `arc land` and `arc drop` — those two disagreed with `rebase_plan`.
+
+    Returns the same steps `rebase_plan` would produce for the stack with
+    `removed` taken out, limited to the branches that actually move.
+    """
+    parent = parent_branch(data, removed)
+    plan: list[RebasePlanStep] = []
+    prev = parent
+    for name in upstack_branches(data, removed):
+        plan.append({"branch": name, "onto": prev})
+        prev = name
+    return plan
+
+
 def rebase_plan(data: StackState, merged: set[str] | None = None) -> list[RebasePlanStep]:
     merged = merged or set()
     plan: list[RebasePlanStep] = []

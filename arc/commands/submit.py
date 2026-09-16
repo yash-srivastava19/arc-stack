@@ -205,15 +205,21 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
             _shared._maybe_print_periodic_hint(root)
 
 
-def _retarget_above_prs(above: list[str], data: StackState, parent: str, quiet: bool) -> None:
+def _retarget_above_prs(plan: list[cascade.RebasePlanStep], data: StackState, quiet: bool) -> None:
     """Retarget / reopen PRs above the landing branch before local branch deletion.
 
     GitHub auto-closes PRs whose base branch is deleted at merge time.
     We must retarget (and reopen if needed) before touching local branches.
+
+    Each PR is retargeted to its branch's new parent from `plan`, not flatly
+    to the landed branch's parent: GitHub computes a PR's diff against its
+    base, so pointing every PR above at the base makes each one show all the
+    commits of the branches below it.
     """
     from arc.const import PR_CLOSED, PR_MERGED
 
-    for ab in above:
+    for step in plan:
+        ab, parent = step["branch"], step["onto"]
         ab_entry = st.get_branch(data, ab)
         pr_num = ab_entry.get("pr_number") if ab_entry else None
         if not pr_num:
@@ -242,7 +248,7 @@ def _retarget_above_prs(above: list[str], data: StackState, parent: str, quiet: 
 
 
 def _restack_above_branches(
-    above: list[str], squash_merged: bool, target: str, parent: str, quiet: bool, root
+    plan: list[cascade.RebasePlanStep], squash_merged: bool, target: str, quiet: bool, root
 ) -> None:
     """Rebase branches above the landing branch back into a chain via cascade.run_cascade.
 
@@ -258,16 +264,8 @@ def _restack_above_branches(
     instead of rolling back; on a pre-condition failure, cascade.run_cascade
     rolls back on its own before returning.
     """
-    old_base = target if squash_merged else None
-    plan: list[cascade.RebasePlanStep] = []
-    prev = parent
-    for ab in above:
-        step: cascade.RebasePlanStep = {"branch": ab, "onto": prev}
-        if old_base:
-            step["old_base"] = old_base
-        plan.append(step)
-        prev = ab
-        old_base = None
+    if squash_merged and plan:
+        plan[0]["old_base"] = target
     result = cascade.run_cascade(plan, root, command="rebase", quiet=quiet)
     if result["state"] == "paused":
         files = result["conflicted_files"]
@@ -341,8 +339,9 @@ def land_branch(
         quiet=quiet,
     )
 
-    _retarget_above_prs(above, data, parent, quiet)
-    _restack_above_branches(above, squash_merged, target, parent, quiet, root)
+    plan = ops.restack_plan(data, target)
+    _retarget_above_prs(plan, data, quiet)
+    _restack_above_branches(plan, squash_merged, target, quiet, root)
 
     if not keep_branch:
         git.checkout(parent)
@@ -407,13 +406,12 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
 
     if dry_run:
         parent = ops.parent_branch(data, target)
-        above = ops.upstack_branches(data, target)
         merge_sha = github.get_merge_commit_sha(b["pr_number"])
         squash_merged = bool(merge_sha) and not git.is_ancestor(git.get_sha(target), parent)
         strategy = "squash-merge" if squash_merged else "regular merge"
         err.print(f"\\[dry-run] land {target} ({strategy})")
-        for ab in above:
-            err.print(f"\\[dry-run] rebase {ab} onto {parent}")
+        for step in ops.restack_plan(data, target):
+            err.print(f"\\[dry-run] rebase {step['branch']} onto {step['onto']}")
         return
 
     if not force:

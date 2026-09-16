@@ -353,15 +353,13 @@ def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
             err.print(f"Use --force to drop {name!r} non-interactively.")
             sys.exit(5)
         click.confirm(f"Remove {name!r} from stack?", default=False, abort=True)
-    parent = ops.parent_branch(data, name)
-    above = ops.upstack_branches(data, name)
+    plan: list[ops.RebasePlanStep] = ops.restack_plan(data, name)
     if dry_run:
         err.print(f"\\[dry-run] remove {name} from stack")
-        for ab in above:
-            err.print(f"\\[dry-run] rebase {ab} onto {parent}")
+        for step in plan:
+            err.print(f"\\[dry-run] rebase {step['branch']} onto {step['onto']}")
         return
     with _shared.with_error_hint(root):
-        plan: list[ops.RebasePlanStep] = [{"branch": ab, "onto": parent} for ab in above]
         result = cascade.run_cascade(plan, root, command="rebase", quiet=quiet)
         if result["state"] == "paused":
             files = result["conflicted_files"]

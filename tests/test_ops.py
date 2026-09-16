@@ -173,3 +173,35 @@ def test_validate_stack_no_base():
     s = {"version": 1, "base": "", "branches": [], "metadata": {}}
     errors = ops.validate_stack(s)
     assert any("base" in e for e in errors)
+
+
+def test_restack_plan_chains_branches_above_removed():
+    """Removing the bottom branch: the branch taking its place goes onto the
+    base, and every branch above it chains onto the branch below."""
+    s = _make_state(["feat/auth", "feat/api", "feat/ui"])
+    assert ops.restack_plan(s, "feat/auth") == [
+        {"branch": "feat/api", "onto": "main"},
+        {"branch": "feat/ui", "onto": "feat/api"},
+    ]
+
+
+def test_restack_plan_chains_from_middle_branch():
+    s = _make_state(["feat/auth", "feat/api", "feat/ui"])
+    assert ops.restack_plan(s, "feat/api") == [
+        {"branch": "feat/ui", "onto": "feat/auth"},
+    ]
+
+
+def test_restack_plan_empty_for_top_branch():
+    s = _make_state(["feat/auth", "feat/api"])
+    assert ops.restack_plan(s, "feat/api") == []
+
+
+def test_restack_plan_matches_rebase_plan_after_removal():
+    """restack_plan and rebase_plan must agree on parentage — the land/drop
+    path disagreeing with the sync path is what flattened real stacks."""
+    s = _make_state(["feat/auth", "feat/api", "feat/ui"])
+    from arc import state as _st
+
+    after = _st.remove_branch(s, "feat/auth")
+    assert ops.restack_plan(s, "feat/auth") == ops.rebase_plan(after)
