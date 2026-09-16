@@ -559,6 +559,9 @@ def test_sync_cascades_rebase(tmp_path):
         patch("arc.git.checkout"),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.github.get_pr", return_value=None),
+        # sync prunes merged branches before planning; without this the test
+        # would shell out to gh and drop feat/auth from the plan.
+        patch("arc.github.pr_is_merged", return_value=False),
     ):
         result = runner.invoke(cli, ["sync"])
     assert result.exit_code == 0
@@ -580,6 +583,8 @@ def test_sync_exits_3_on_conflict(tmp_path):
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.conflicted_files", return_value=["src/auth.py"]),
         patch("arc.github.get_pr", return_value=None),
+        # sync prunes merged branches before planning; keep it off the network.
+        patch("arc.github.pr_is_merged", return_value=False),
     ):
         result = runner.invoke(cli, ["sync"])
     assert result.exit_code == 3
@@ -1307,6 +1312,8 @@ def test_sync_uses_fork_point_rebase(tmp_path):
             side_effect=lambda _: plain_rebase_calls.append(True) or MagicMock(returncode=0),
         ),
         patch("arc.commands.sync.tip.sync_tip_branch"),
+        # sync prunes merged branches before planning; keep it off the network.
+        patch("arc.github.pr_is_merged", return_value=False),
     ):
         result = runner.invoke(cli, ["sync"])
     assert result.exit_code == 0, result.output
@@ -1336,6 +1343,8 @@ def test_sync_refresh_index_called_before_rebase(tmp_path):
             side_effect=lambda _: call_order.append("rebase") or MagicMock(returncode=0),
         ),
         patch("arc.commands.sync.tip.sync_tip_branch"),
+        # sync prunes merged branches before planning; keep it off the network.
+        patch("arc.github.pr_is_merged", return_value=False),
     ):
         result = runner.invoke(cli, ["sync"])
     assert result.exit_code == 0, result.output
@@ -1366,6 +1375,8 @@ def test_sync_pre_rebase_failure_shows_clear_error(tmp_path):
         patch("arc.git.rebase_fork_point", return_value=failed_result),
         # Not mid-rebase: rebase never started
         patch("arc.git.is_mid_rebase", return_value=False),
+        # sync prunes merged branches before planning; keep it off the network.
+        patch("arc.github.pr_is_merged", return_value=False),
     ):
         result = runner.invoke(cli, ["sync"])
     assert result.exit_code == 3
@@ -1894,6 +1905,8 @@ def test_error_hint_printed_after_sync_exception(tmp_path):
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.fetch", side_effect=RuntimeError("network error")),
+        # sync prunes merged branches before planning; keep it off the network.
+        patch("arc.github.pr_is_merged", return_value=False),
     ):
         result = runner.invoke(cli, ["sync"])
     assert "arc report --bug" in result.output
@@ -1910,6 +1923,8 @@ def test_error_hint_respects_enabled_false(tmp_path):
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.fetch", side_effect=RuntimeError("network error")),
+        # sync prunes merged branches before planning; keep it off the network.
+        patch("arc.github.pr_is_merged", return_value=False),
     ):
         result = runner.invoke(cli, ["sync"])
     assert "arc report --bug" not in result.output
@@ -1926,6 +1941,8 @@ def test_error_hint_respects_prompt_after_error_false(tmp_path):
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.fetch", side_effect=RuntimeError("network error")),
+        # sync prunes merged branches before planning; keep it off the network.
+        patch("arc.github.pr_is_merged", return_value=False),
     ):
         result = runner.invoke(cli, ["sync"])
     assert "arc report --bug" not in result.output
@@ -2275,6 +2292,7 @@ def test_sync_detects_squash_merged_branch(arc_root, monkeypatch):
     monkeypatch.setattr(_git, "fetch", lambda remote="origin": None)
     monkeypatch.setattr(_git, "current_branch", lambda: "feat/b")
     monkeypatch.setattr(_git, "is_squash_merged", lambda root, branch, base: branch == "feat/a")
+    monkeypatch.setattr("arc.github.pr_is_merged", lambda n: False)
     monkeypatch.setattr(_git, "is_ancestor", lambda a, b: True)
     monkeypatch.setattr(_git, "rebase_fork_point", lambda onto: type("R", (), {"returncode": 0})())
     monkeypatch.setattr(_git, "checkout", lambda b: None)
@@ -2816,6 +2834,8 @@ def test_sync_calls_sync_tip_branch(tmp_path):
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.github.get_pr", return_value=None),
         patch("arc.commands.sync.tip.sync_tip_branch") as mock_sync,
+        # sync prunes merged branches before planning; keep it off the network.
+        patch("arc.github.pr_is_merged", return_value=False),
     ):
         result = runner.invoke(cli, ["sync"])
     assert result.exit_code == 0
@@ -3005,3 +3025,50 @@ def test_land_retargets_each_above_pr_to_its_new_parent(tmp_path):
     bases = dict(retargets)
     assert bases[43] == "main", "feat/api takes the landed branch's place on the base"
     assert bases[44] == "feat/api", "feat/ui's PR must stay based on feat/api, not main"
+
+
+# ---------------------------------------------------------------------------
+# Issue #132: arc sync must prune merged branches before it builds the plan
+# ---------------------------------------------------------------------------
+
+
+def test_sync_skips_branch_whose_pr_already_merged(tmp_path):
+    """A branch whose PR is already merged must not be rebased.
+
+    sync pruned merged branches only after the cascade, so a squash-merged
+    bottom branch got its already-upstream commits replayed onto the base —
+    conflicting in files unrelated to the stack. The branch above it should
+    take its place on the base instead.
+    """
+    _write_state(
+        tmp_path,
+        prefix="feat",
+        branches=[
+            {"name": "feat/auth", "pr_number": 42, "revision": 1},
+            {"name": "feat/api", "pr_number": 43, "revision": 1},
+            {"name": "feat/ui", "pr_number": 44, "revision": 1},
+        ],
+    )
+    rebase_calls = []
+
+    def fake_rebase_fork_point(onto):
+        rebase_calls.append(onto)
+        return MagicMock(returncode=0)
+
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.fetch"),
+        patch("arc.git.refresh_index"),
+        patch("arc.git.checkout"),
+        patch("arc.git.get_sha", return_value="abc"),
+        patch("arc.git.branch_exists", return_value=False),
+        patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fork_point),
+        patch("arc.github.pr_is_merged", side_effect=lambda n: n == 42),
+        patch("arc.github.update_pr_base", return_value=True),
+        patch("arc.commands.sync.tip.sync_tip_branch"),
+    ):
+        result = runner.invoke(cli, ["sync"])
+    assert result.exit_code == 0, result.output
+    assert "feat/auth" not in rebase_calls, "the merged branch must not be rebased"
+    assert rebase_calls == ["main", "feat/api"]

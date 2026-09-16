@@ -138,6 +138,15 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                     )
                 err.print("   Proceeding with sync — resolve conflicts if they occur.", style="dim")
 
+        # Prune before planning, not after: a branch whose PR is already
+        # merged must never be rebased. Replaying its upstream commits onto
+        # the base conflicts in files that have nothing to do with the stack,
+        # and _scan_squash_merged's local heuristic does not catch every
+        # squash merge. Pruning here also lets rebase_plan chain the branches
+        # above it onto the base for free.
+        if not dry_run:
+            data = _prune_merged_branches(data, root, quiet)
+
         plan = ops.rebase_plan(data)
 
         if dry_run:
@@ -164,7 +173,6 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                 sys.exit(3)
 
         if not dry_run:
-            data = _prune_merged_branches(data, root, quiet)
             tip.sync_tip_branch(data)
 
         if not dry_run and not quiet:
