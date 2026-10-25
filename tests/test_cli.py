@@ -1683,7 +1683,7 @@ def test_rebase_continue_sync_initiated_fires_post_sync_hook(tmp_path):
     assert result.exit_code == 0
     mock_hook.assert_called_once()
     assert mock_hook.call_args.args[2] == "post-sync"
-    mock_hint.assert_called_once_with(tmp_path)
+    mock_hint.assert_called_once_with(tmp_path, False)
 
 
 def test_rebase_abort_no_paused_state(tmp_path):
