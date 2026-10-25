@@ -202,7 +202,7 @@ def submit_cmd(draft, mark_open, skip_hooks, dry_run, quiet, output_json):
                         )
 
         if not dry_run:
-            _shared._maybe_print_periodic_hint(root)
+            _shared._maybe_print_periodic_hint(root, quiet)
 
 
 def _retarget_above_prs(plan: list[cascade.RebasePlanStep], data: StackState, quiet: bool) -> None:

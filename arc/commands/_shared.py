@@ -29,8 +29,14 @@ err = Console(stderr=True)
 out = Console()
 
 
-def _maybe_print_periodic_hint(root) -> None:
-    """Randomly print non-blocking feedback hint on success."""
+def _maybe_print_periodic_hint(root, quiet: bool = False) -> None:
+    """Randomly print non-blocking feedback hint on success.
+
+    Silent for -q and for scripts and agents (no TTY), which also skips the
+    PyPI version check.
+    """
+    if quiet or not _is_tty():
+        return
     try:
         config = st.load_config(root)
     except Exception:

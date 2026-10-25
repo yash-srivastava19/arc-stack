@@ -188,7 +188,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                 output_json=output_json,
                 quiet=quiet,
             )
-            _shared._maybe_print_periodic_hint(root)
+            _shared._maybe_print_periodic_hint(root, quiet)
 
 
 @click.command("push")
@@ -249,7 +249,7 @@ def push_cmd(dry_run, quiet, output_json, skip_hooks):
             err.print(
                 f"Pushed {len(to_push)} branch(es).{skip_note} Run 'arc submit' to create pull requests."
             )
-        _shared._maybe_print_periodic_hint(root)
+        _shared._maybe_print_periodic_hint(root, quiet)
 
 
 @click.command("restack")
@@ -328,7 +328,7 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
                 output_json=False,
                 quiet=quiet,
             )
-            _shared._maybe_print_periodic_hint(root)
+            _shared._maybe_print_periodic_hint(root, quiet)
         else:
             if not quiet:
                 err.print("Rebase complete.")

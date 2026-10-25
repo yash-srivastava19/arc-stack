@@ -271,7 +271,7 @@ def status_cmd(output_json, plain, quiet):
         hint = ops.next_step_hint(status)
         if hint:
             err.print(f"\n→ {hint}")
-    _shared._maybe_print_periodic_hint(root)
+    _shared._maybe_print_periodic_hint(root, quiet)
 
 
 def _stale_pr_bases(data: StackState, status: dict) -> list[str]:

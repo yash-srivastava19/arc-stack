@@ -1973,6 +1973,22 @@ def test_periodic_hint_printed_when_random_hits(tmp_path):
     assert "arc report --feedback" in result.output
 
 
+def test_periodic_hint_not_printed_with_quiet(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.commit_count", return_value=2),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.github.get_pr", return_value=None),
+        patch("arc.commands._shared.random.randint", return_value=1),
+        patch("arc.commands._shared._is_tty", return_value=True),
+    ):
+        result = runner.invoke(cli, ["status", "-q"])
+    assert "arc report --feedback" not in result.output
+
+
 def test_periodic_hint_not_printed_when_random_misses(tmp_path):
     """Periodic feedback hint is not printed when random doesn't return 1."""
     _write_state_with_branches(tmp_path)
