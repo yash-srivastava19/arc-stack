@@ -117,6 +117,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
             err.print("Fetching...", end=" ")
         if not dry_run:
             git.fetch()
+            git.fast_forward(root, data["base"])
             # Clear phantom mtime differences (e.g. uv.lock) that would cause
             # git rebase to refuse with "unstaged changes" even when nothing changed.
             git.refresh_index()
