@@ -1204,6 +1204,7 @@ def test_land_auto_promotes_next_pr_to_ready(tmp_path):
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.git.checkout"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.rebase_onto", return_value=MagicMock(returncode=0)),
         patch("arc.git.delete_branch"),
         patch("arc.github.get_pr_state", return_value="OPEN"),
         patch("arc.github.update_pr_base", return_value=True),
@@ -1228,6 +1229,7 @@ def test_land_no_auto_promote_when_disabled_in_config(tmp_path):
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.git.checkout"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.rebase_onto", return_value=MagicMock(returncode=0)),
         patch("arc.git.delete_branch"),
         patch("arc.github.get_pr_state", return_value="OPEN"),
         patch("arc.github.update_pr_base", return_value=True),
@@ -1436,6 +1438,7 @@ def test_drop_removes_branch_and_restacks(tmp_path):
         patch("arc.git.checkout"),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", side_effect=fake_rebase),
+        patch("arc.git.rebase_onto", side_effect=lambda new, old, branch: fake_rebase(new)),
     ):
         result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
     assert result.exit_code == 0
@@ -2816,6 +2819,7 @@ def test_drop_calls_sync_tip_branch(tmp_path):
         patch("arc.git.checkout"),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.rebase_onto", return_value=MagicMock(returncode=0)),
         patch("arc.commands.stack.tip.sync_tip_branch") as mock_sync,
     ):
         result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
@@ -2957,6 +2961,10 @@ def test_drop_restacks_three_deep_stack_in_chain_not_flat(tmp_path):
         patch("arc.git.checkout"),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fork_point),
+        patch(
+            "arc.git.rebase_onto",
+            side_effect=lambda new, old, branch: fake_rebase_fork_point(new),
+        ),
     ):
         result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
     assert result.exit_code == 0, result.output

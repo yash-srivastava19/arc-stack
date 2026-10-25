@@ -49,7 +49,10 @@ def restack_plan(data: StackState, removed: str) -> list[RebasePlanStep]:
     in `arc land` and `arc drop` — those two disagreed with `rebase_plan`.
 
     Returns the same steps `rebase_plan` would produce for the stack with
-    `removed` taken out, limited to the branches that actually move.
+    `removed` taken out, limited to the branches that actually move. The first
+    step carries `old_base=removed` so `removed`'s commits are cut out of the
+    branch above it; fork-point onto the parent would keep them, because that
+    branch already descends from the parent.
     """
     parent = parent_branch(data, removed)
     plan: list[RebasePlanStep] = []
@@ -57,6 +60,8 @@ def restack_plan(data: StackState, removed: str) -> list[RebasePlanStep]:
     for name in upstack_branches(data, removed):
         plan.append({"branch": name, "onto": prev})
         prev = name
+    if plan:
+        plan[0]["old_base"] = removed
     return plan
 
 

@@ -180,7 +180,7 @@ def test_restack_plan_chains_branches_above_removed():
     base, and every branch above it chains onto the branch below."""
     s = _make_state(["feat/auth", "feat/api", "feat/ui"])
     assert ops.restack_plan(s, "feat/auth") == [
-        {"branch": "feat/api", "onto": "main"},
+        {"branch": "feat/api", "onto": "main", "old_base": "feat/auth"},
         {"branch": "feat/ui", "onto": "feat/api"},
     ]
 
@@ -188,7 +188,7 @@ def test_restack_plan_chains_branches_above_removed():
 def test_restack_plan_chains_from_middle_branch():
     s = _make_state(["feat/auth", "feat/api", "feat/ui"])
     assert ops.restack_plan(s, "feat/api") == [
-        {"branch": "feat/ui", "onto": "feat/auth"},
+        {"branch": "feat/ui", "onto": "feat/auth", "old_base": "feat/api"},
     ]
 
 
@@ -204,4 +204,5 @@ def test_restack_plan_matches_rebase_plan_after_removal():
     from arc import state as _st
 
     after = _st.remove_branch(s, "feat/auth")
-    assert ops.restack_plan(s, "feat/auth") == ops.rebase_plan(after)
+    chain = [(st["branch"], st["onto"]) for st in ops.restack_plan(s, "feat/auth")]
+    assert chain == [(st["branch"], st["onto"]) for st in ops.rebase_plan(after)]

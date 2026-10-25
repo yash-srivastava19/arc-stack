@@ -248,24 +248,17 @@ def _retarget_above_prs(plan: list[cascade.RebasePlanStep], data: StackState, qu
 
 
 def _restack_above_branches(
-    plan: list[cascade.RebasePlanStep], squash_merged: bool, target: str, quiet: bool, root
+    plan: list[cascade.RebasePlanStep], target: str, quiet: bool, root
 ) -> None:
     """Rebase branches above the landing branch back into a chain via cascade.run_cascade.
 
-    Each branch is rebased onto the branch below it (not flatly onto parent),
-    mirroring ops.rebase_plan's chaining so a 3+ deep stack stays a chain
-    instead of fanning out into siblings. Only the first branch above target
-    needs an explicit old_base: target's ref is about to be deleted, so
-    fork-point (which the rest rely on) has nothing to key off. On a squash
-    merge, target's own reflog wouldn't help anyway since the squash commit
-    on parent is unrelated history to target's original commits.
+    ops.restack_plan already chains the steps and cuts target's commits out of
+    the first branch above it, which covers squash and regular merges alike.
 
     On a real conflict, the cascade pauses and persists resumable state
     instead of rolling back; on a pre-condition failure, cascade.run_cascade
     rolls back on its own before returning.
     """
-    if squash_merged and plan:
-        plan[0]["old_base"] = target
     result = cascade.run_cascade(plan, root, command="rebase", quiet=quiet)
     if result["state"] == "paused":
         files = result["conflicted_files"]
@@ -325,8 +318,6 @@ def land_branch(
     assert b is not None
     parent = ops.parent_branch(data, target)
     above = ops.upstack_branches(data, target)
-    merge_sha = github.get_merge_commit_sha(b["pr_number"])
-    squash_merged = bool(merge_sha) and not git.is_ancestor(git.get_sha(target), parent)
 
     _shared.run_lifecycle_hook(
         root,
@@ -341,7 +332,7 @@ def land_branch(
 
     plan = ops.restack_plan(data, target)
     _retarget_above_prs(plan, data, quiet)
-    _restack_above_branches(plan, squash_merged, target, quiet, root)
+    _restack_above_branches(plan, target, quiet, root)
 
     if not keep_branch:
         git.checkout(parent)
