@@ -99,10 +99,10 @@ def init_cmd(base, prefix, quiet):
 
 
 def _auto_heal_stack_head(root, data: StackState, quiet: bool) -> StackState:
-    """If HEAD isn't where the stack expects, and that's because the
-    bottom-most registered branch's PR already merged, land it (and any
-    further already-merged branches above it) automatically before
-    proceeding — so `arc new` never silently branches off the wrong commit.
+    """If the bottom-most registered branch's PR already merged, land it (and
+    any further already-merged branches above it) automatically before
+    proceeding, whether or not HEAD is still on the stack's top, so `arc new`
+    never silently branches off a merged branch or the wrong commit.
 
     Only auto-acts when the reason is unambiguous (a merged PR). Any other
     mismatch is a genuine "you're somewhere unexpected" situation and still
@@ -114,12 +114,13 @@ def _auto_heal_stack_head(root, data: StackState, quiet: bool) -> StackState:
             return data  # nothing registered yet — nothing to heal against
         expected = names[-1]
         current = git.current_branch()
-        if current == expected:
-            return data
         bottom = names[0]
         b = st.get_branch(data, bottom)
         assert b is not None
-        if not b["pr_number"] or not github.pr_is_merged(b["pr_number"]):
+        merged = bool(b["pr_number"]) and github.pr_is_merged(b["pr_number"])
+        if current == expected and not merged:
+            return data
+        if not merged:
             err.print(f"error: HEAD is on {current!r}, but the stack expects {expected!r}.")
             err.print(f"hint: run 'arc checkout {expected}' first, then 'arc new'.")
             sys.exit(1)

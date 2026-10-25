@@ -311,21 +311,21 @@ def test_new_errors_when_head_mismatched_and_not_merged(tmp_path):
     mock_create.assert_not_called()
 
 
-def test_new_no_auto_heal_when_head_already_matches(tmp_path):
-    """No merge-status check (or any healing) happens when HEAD already
-    matches the stack's top — the common case must stay a single fast path."""
+def test_new_no_auto_heal_when_head_matches_and_pr_is_open(tmp_path):
+    """HEAD on the stack's top with its PR still open: branch from HEAD, no healing."""
     _write_state(tmp_path, branches=[{"name": "feat/auth", "pr_number": 42, "revision": 1}])
     runner = CliRunner()
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/auth"),
         patch("arc.git.create_branch") as mock_create,
-        patch("arc.github.pr_is_merged") as mock_merged,
+        patch("arc.github.pr_is_merged", return_value=False),
+        patch("arc.commands.stack.land_branch") as mock_land,
     ):
         result = runner.invoke(cli, ["new", "feat/api"])
     assert result.exit_code == 0, result.output
     mock_create.assert_called_once_with("feat/api", "HEAD")
-    mock_merged.assert_not_called()
+    mock_land.assert_not_called()
 
 
 def test_new_auto_heals_multiple_merged_branches_in_order(tmp_path):
