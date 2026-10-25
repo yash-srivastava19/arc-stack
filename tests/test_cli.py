@@ -311,21 +311,21 @@ def test_new_errors_when_head_mismatched_and_not_merged(tmp_path):
     mock_create.assert_not_called()
 
 
-def test_new_no_auto_heal_when_head_already_matches(tmp_path):
-    """No merge-status check (or any healing) happens when HEAD already
-    matches the stack's top — the common case must stay a single fast path."""
+def test_new_no_auto_heal_when_head_matches_and_pr_is_open(tmp_path):
+    """HEAD on the stack's top with its PR still open: branch from HEAD, no healing."""
     _write_state(tmp_path, branches=[{"name": "feat/auth", "pr_number": 42, "revision": 1}])
     runner = CliRunner()
     with (
         patch("arc.git.find_repo_root", return_value=tmp_path),
         patch("arc.git.current_branch", return_value="feat/auth"),
         patch("arc.git.create_branch") as mock_create,
-        patch("arc.github.pr_is_merged") as mock_merged,
+        patch("arc.github.pr_is_merged", return_value=False),
+        patch("arc.commands.stack.land_branch") as mock_land,
     ):
         result = runner.invoke(cli, ["new", "feat/api"])
     assert result.exit_code == 0, result.output
     mock_create.assert_called_once_with("feat/api", "HEAD")
-    mock_merged.assert_not_called()
+    mock_land.assert_not_called()
 
 
 def test_new_auto_heals_multiple_merged_branches_in_order(tmp_path):
@@ -1204,6 +1204,7 @@ def test_land_auto_promotes_next_pr_to_ready(tmp_path):
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.git.checkout"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.rebase_onto", return_value=MagicMock(returncode=0)),
         patch("arc.git.delete_branch"),
         patch("arc.github.get_pr_state", return_value="OPEN"),
         patch("arc.github.update_pr_base", return_value=True),
@@ -1228,6 +1229,7 @@ def test_land_no_auto_promote_when_disabled_in_config(tmp_path):
         patch("arc.git.is_ancestor", return_value=True),
         patch("arc.git.checkout"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.rebase_onto", return_value=MagicMock(returncode=0)),
         patch("arc.git.delete_branch"),
         patch("arc.github.get_pr_state", return_value="OPEN"),
         patch("arc.github.update_pr_base", return_value=True),
@@ -1436,6 +1438,7 @@ def test_drop_removes_branch_and_restacks(tmp_path):
         patch("arc.git.checkout"),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", side_effect=fake_rebase),
+        patch("arc.git.rebase_onto", side_effect=lambda new, old, branch: fake_rebase(new)),
     ):
         result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
     assert result.exit_code == 0
@@ -1680,7 +1683,7 @@ def test_rebase_continue_sync_initiated_fires_post_sync_hook(tmp_path):
     assert result.exit_code == 0
     mock_hook.assert_called_once()
     assert mock_hook.call_args.args[2] == "post-sync"
-    mock_hint.assert_called_once_with(tmp_path)
+    mock_hint.assert_called_once_with(tmp_path, False)
 
 
 def test_rebase_abort_no_paused_state(tmp_path):
@@ -1968,6 +1971,22 @@ def test_periodic_hint_printed_when_random_hits(tmp_path):
     ):
         result = runner.invoke(cli, ["status"])
     assert "arc report --feedback" in result.output
+
+
+def test_periodic_hint_not_printed_with_quiet(tmp_path):
+    _write_state_with_branches(tmp_path)
+    runner = CliRunner()
+    with (
+        patch("arc.git.find_repo_root", return_value=tmp_path),
+        patch("arc.git.current_branch", return_value="feat/auth"),
+        patch("arc.git.commit_count", return_value=2),
+        patch("arc.git.is_ancestor", return_value=True),
+        patch("arc.github.get_pr", return_value=None),
+        patch("arc.commands._shared.random.randint", return_value=1),
+        patch("arc.commands._shared._is_tty", return_value=True),
+    ):
+        result = runner.invoke(cli, ["status", "-q"])
+    assert "arc report --feedback" not in result.output
 
 
 def test_periodic_hint_not_printed_when_random_misses(tmp_path):
@@ -2816,6 +2835,7 @@ def test_drop_calls_sync_tip_branch(tmp_path):
         patch("arc.git.checkout"),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", return_value=MagicMock(returncode=0)),
+        patch("arc.git.rebase_onto", return_value=MagicMock(returncode=0)),
         patch("arc.commands.stack.tip.sync_tip_branch") as mock_sync,
     ):
         result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
@@ -2957,6 +2977,10 @@ def test_drop_restacks_three_deep_stack_in_chain_not_flat(tmp_path):
         patch("arc.git.checkout"),
         patch("arc.git.get_sha", return_value="abc"),
         patch("arc.git.rebase_fork_point", side_effect=fake_rebase_fork_point),
+        patch(
+            "arc.git.rebase_onto",
+            side_effect=lambda new, old, branch: fake_rebase_fork_point(new),
+        ),
     ):
         result = runner.invoke(cli, ["drop", "feat/auth", "-f"])
     assert result.exit_code == 0, result.output

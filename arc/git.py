@@ -95,6 +95,22 @@ def fetch(remote: str = "origin") -> None:
     _run(["git", "fetch", remote])
 
 
+def fast_forward(root: Path, branch: str, remote: str = "origin") -> bool:
+    """Move local `branch` up to `remote/branch` when that is a fast-forward.
+
+    Leaves a branch with unpushed commits, or with no remote counterpart, alone.
+    """
+    upstream = f"{remote}/{branch}"
+    is_ff = _run(["git", "merge-base", "--is-ancestor", branch, upstream], cwd=root, check=False)
+    if is_ff.returncode != 0:
+        return False
+    if current_branch() == branch:
+        _run(["git", "merge", "--ff-only", "-q", upstream], cwd=root)
+    else:
+        _run(["git", "update-ref", f"refs/heads/{branch}", upstream], cwd=root)
+    return True
+
+
 def remote_ahead_count(base: str, remote: str = "origin") -> int:
     """Commits origin/<base> is ahead of local <base>. 0 if the remote-tracking ref
     is missing or local is already up to date — never raises."""

@@ -37,15 +37,16 @@ def version_hint(root: Path) -> str | None:
     cached_latest = meta.get("version_check_latest")
     if time.time() - last_check > 86400:
         latest = latest_pypi_version()
+        # Record failed checks too, or an unreachable PyPI costs the full timeout on every command.
+        meta["version_check_ts"] = int(time.time())
         if latest:
-            meta["version_check_ts"] = int(time.time())
             meta["version_check_latest"] = latest
-            data["metadata"] = meta
-            try:
-                st.save(root, data)
-            except Exception:
-                pass
             cached_latest = latest
+        data["metadata"] = meta
+        try:
+            st.save(root, data)
+        except Exception:
+            pass
     if cached_latest and cached_latest != current_version():
         return f"arc {cached_latest} available — run: arc upgrade"
     return None
