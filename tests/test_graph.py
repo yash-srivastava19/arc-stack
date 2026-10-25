@@ -52,3 +52,10 @@ def test_analyze_stack_critical_path_is_full_chain():
         ),
     )
     assert analysis.critical_path == ["feat/a", "feat/b", "feat/c"]
+
+
+def test_analyze_stack_blocks_pending_ci():
+    data = {"base": "main", "branches": [{"name": "feat/a", "pr_number": 1, "revision": 1}]}
+    analysis = analyze_stack(data, make_statuses(["feat/a"], ["feat/a"], []))
+    assert "feat/a" not in analysis.safe_to_land
+    assert analysis.blocked["feat/a"] == "CI has not passed yet"
