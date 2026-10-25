@@ -38,6 +38,9 @@ def analyze_stack(data: StackState, statuses: dict[str, dict]) -> StackAnalysis:
         elif s.get("ci_passing") is False:
             blocked[name] = "CI is failing"
             parent_ready[name] = False
+        elif s.get("ci_passing") is None:
+            blocked[name] = "CI has not passed yet"
+            parent_ready[name] = False
         else:
             safe_to_land.append(name)
             parent_ready[name] = True
