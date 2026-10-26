@@ -1,0 +1,9 @@
+#!/bin/sh
+# stub gh for local-only scenarios: authenticated, no PRs, logs every call
+echo "$*" >> "${BENCH_GH_LOG:-/dev/null}"
+case "$1 $2" in
+  "--version "*) echo "gh version 0.0.0 (bench stub)"; exit 0;;
+  "auth status") echo "Logged in to github.com (bench stub)"; exit 0;;
+esac
+echo "bench stub gh: unsupported in local scenario: $*" >&2
+exit 1

@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""Mark arc's once-a-day PyPI version check as done today, as on a developer's machine."""
+import json
+import subprocess
+import time
+from pathlib import Path
+
+run = lambda *a: subprocess.run(a, capture_output=True, text=True).stdout.strip()
+version = run("arc", "--version").split()[-1]
+state = Path(run("git", "rev-parse", "--show-toplevel")) / ".arc" / "state.json"
+data = json.loads(state.read_text())
+data.setdefault("metadata", {}).update(
+    version_check_ts=int(time.time()) + 10**6, version_check_latest=version
+)
+state.write_text(json.dumps(data, indent=2))
