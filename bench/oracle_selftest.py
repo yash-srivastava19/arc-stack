@@ -36,6 +36,12 @@ BROKEN = [
     ),
     ("partial rollback", "S5", "+", ["git branch -f b2 b1"]),
     ("deleted branch left on origin", "S7", "+", ["git push -q origin b2:refs/heads/b3"]),
+    ("teammate commit overwritten", "S14", "+", ["git push -q -f origin b2~1:refs/heads/b2"]),
+    ("uncommitted work lost", "S10", "+", ["git checkout -q -- f5.txt"]),
+]
+# Broken end states for the arc arm: the stack file disagrees with git.
+BROKEN_ARC = [
+    ("stale branch left in .arc", "S6", "+", ["git branch -q b1 main", "arc add b1 -q"]),
 ]
 
 
@@ -45,13 +51,14 @@ def main():
         r = run_once(SCENARIOS[sid], "git", N)
         print(f"control  {sid}: oracle_pass={r['oracle_pass']}")
         ok_all &= r["oracle_pass"]
-    for name, sid, mode, extra in BROKEN:
-        sc = SCENARIOS[sid]
-        lines = (sc.git(N) + extra) if mode == "+" else extra
-        r = run_once(sc, "git", N, lines=lines)
-        caught = not r["oracle_pass"]
-        ok_all &= caught
-        print(f"broken   {name:30s} ({sid}): caught={caught} by {r['failed']}")
+    for arm, cases in (("git", BROKEN), ("arc", BROKEN_ARC)):
+        for name, sid, mode, extra in cases:
+            sc = SCENARIOS[sid]
+            lines = (getattr(sc, arm)(N) + extra) if mode == "+" else extra
+            r = run_once(sc, arm, N, lines=lines)
+            caught = not r["oracle_pass"]
+            ok_all &= caught
+            print(f"broken   {name:30s} ({sid}, {arm}): caught={caught} by {r['failed']}")
     print("ORACLE SELFTEST", "PASS" if ok_all else "FAIL")
 
 

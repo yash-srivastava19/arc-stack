@@ -102,7 +102,7 @@ def s1_setup(root, env, arm, n):
 
 
 def s1_arc(n):
-    out = ["arc init --base main -q", "seed-arc-cache"]
+    out = ["arc init --base main -q"]
     for i in range(1, n + 1):
         out += [f"arc new b{i} -q", write(f"f{i}.txt", f"b{i} v1\n"), f"git add f{i}.txt"]
         out += [f"git commit -q -m 'feat: b{i}'"]

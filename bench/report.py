@@ -1,105 +1,132 @@
-"""Aggregate results/*.jsonl into markdown tables."""
+"""Print the markdown tables used on the docs Benchmarks page from bench/results/.
 
+python3 report.py               # scripted results for the current arc
+python3 report.py --history     # pass/fail per arc version from results/correctness-*.jsonl
+"""
+
+from __future__ import annotations
+
+import argparse
 import json
-import math
-import statistics
-import sys
-from collections import defaultdict
 from pathlib import Path
 
-R = Path(__file__).resolve().parent / "results"
+RESULTS = Path(__file__).resolve().parent / "results"
 
 
-def load(name):
-    p = R / name
-    return [json.loads(l) for l in p.read_text().splitlines() if l.strip()] if p.exists() else []
+def load(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
-def wilson(k, n, z=1.96):
-    if n == 0:
-        return (0, 0)
-    p = k / n
-    d = 1 + z * z / n
-    c = p + z * z / (2 * n)
-    m = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n))
-    return ((c - m) / d, (c + m) / d)
+def verdict(arm: dict) -> str:
+    if arm.get("unsupported"):
+        return "no command"
+    return "pass" if arm["oracle_pass"] else "**fail**"
 
 
-def scripted_table(rows):
+def timing(arm: dict) -> str:
+    if arm.get("unsupported") or arm["median_ms"] is None:
+        return "–"
+    return f"{arm['median_ms']:.0f} ({arm['min_ms']:.0f}–{arm['max_ms']:.0f})"
+
+
+def commands(arm: dict) -> str:
+    return "–" if arm.get("unsupported") else str(arm["cmds"])
+
+
+def processes(arm: dict) -> str:
+    return "–" if arm.get("unsupported") else str(arm["git_procs"])
+
+
+def scenario_table(rows: list[dict]) -> str:
     out = [
-        "| Scenario | n | Arm | Cmds | Git procs | Median ms | p95 ms | Oracle | Failed checks |",
+        "| Scenario | Correct: arc | Correct: git | Commands: arc | Commands: git "
+        "| Time ms: arc | Time ms: git | git processes: arc | git processes: git |",
         "|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
-        for arm in ("arc", "arcfix", "git"):
-            if arm not in r:
-                continue
-            a = r[arm]
-            label = {"arc": "arc (documented)", "arcfix": "arc + workaround", "git": "expert git"}[
-                arm
-            ]
-            out.append(
-                f"| {r['scenario']} | {r['n']} | {label} | {a['cmds']} | {a['git_procs']} | {a['median_ms']} | {a['p95_ms']} | "
-                f"{'PASS' if a['oracle_pass'] else '**FAIL**'} | {', '.join(a['failed'])} |"
+        a, g = r["arc"], r["git"]
+        out.append(
+            f"| {r['scenario']} {r['title']} | {verdict(a)} | {verdict(g)} | {commands(a)} | "
+            f"{commands(g)} | {timing(a)} | {timing(g)} | {processes(a)} | {processes(g)} |"
+        )
+    return "\n".join(out)
+
+
+def depth_table(rows: list[dict]) -> str:
+    out = [
+        "| Scenario | Branches | Time ms: arc | Time ms: git | git processes: arc | git processes: git |",
+        "|---|---|---|---|---|---|",
+    ]
+    for r in sorted(rows, key=lambda r: (r["scenario"], r["n"])):
+        a, g = r["arc"], r["git"]
+        out.append(
+            f"| {r['scenario']} | {r['n']} | {timing(a)} | {timing(g)} | {processes(a)} | {processes(g)} |"
+        )
+    return "\n".join(out)
+
+
+def history_table() -> str:
+    runs = {
+        p.stem.removeprefix("correctness-"): {r["scenario"]: r for r in load(p)}
+        for p in sorted(RESULTS.glob("correctness-*.jsonl"))
+    }
+    versions = list(runs)
+    scenarios = list(next(iter(runs.values())))
+    out = [
+        "| Scenario | " + " | ".join(f"arc {v}" for v in versions) + " |",
+        "|---|" + "---|" * len(versions),
+    ]
+    for sid in scenarios:
+        title = runs[versions[0]][sid]["title"]
+        cells = [verdict(runs[v][sid]["arc"]) if sid in runs[v] else "–" for v in versions]
+        out.append(f"| {sid} {title} | " + " | ".join(cells) + " |")
+    return "\n".join(out)
+
+
+def scenario_sections(n: int = 5) -> str:
+    """One section per scenario: the situation in words, then each arm's exact commands."""
+    from scenarios import DONE, SCENARIOS
+
+    out = []
+    for sc in SCENARIOS.values():
+        situation = sc.prompt(n).removesuffix(DONE)
+        for preamble_end in ("except stack branches. ", "stands in for GitHub. "):
+            situation = situation.split(preamble_end)[-1]
+        out += [f"### {sc.id}: {sc.title}", "", situation, ""]
+        for arm in ("arc", "git"):
+            lines = getattr(sc, arm)
+            out += [f"**{arm}**", ""]
+            out += (
+                ["```bash", *lines(n), "```", ""]
+                if lines
+                else ["arc has no command for this. Use the git sequence.", ""]
             )
     return "\n".join(out)
 
 
-def agent_table(rows):
-    g = defaultdict(list)
-    for r in rows:
-        g[(r["scenario"], r["arm"], r["model"])].append(r)
-    out = [
-        "| Scenario | Model | Arm | Trials | Harness err | Success [95% CI] | Tool calls med (IQR) | Cost $ med | Wall s med | False-done | Destructive/trial | Top failed checks |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
-    ]
-    for (s, arm, m), rs in sorted(g.items()):
-        valid = [r for r in rs if not r.get("harness_error") or r.get("capped")]
-        k = sum(r["success"] for r in valid)
-        n = len(valid)
-        lo, hi = wilson(k, n)
-        calls = sorted(r["tool_calls"] for r in valid) or [0]
-        q = lambda p: calls[int(p * (len(calls) - 1))]
-        costs = [r["cost_usd"] or 0 for r in valid] or [0]
-        walls = [r["wall_s"] for r in valid] or [0]
-        fails = defaultdict(int)
-        for r in valid:
-            for f in r["failed"]:
-                fails[f] += 1
-        top = ", ".join(f"{f}×{c}" for f, c in sorted(fails.items(), key=lambda x: -x[1])[:3])
-        out.append(
-            f"| {s} | {m} | {arm} | {n} | {len(rs) - n} | {k}/{n} ({lo:.0%}–{hi:.0%}) | {statistics.median(calls):.0f} ({q(0.25)}–{q(0.75)}) | "
-            f"{statistics.median(costs):.2f} | {statistics.median(walls):.0f} | {sum(r['false_done'] for r in valid)} | "
-            f"{statistics.mean([r['destructive'] for r in valid]) if valid else 0:.1f} | {top} |"
-        )
-    return "\n".join(out)
-
-
-def agent_pooled(rows):
-    g = defaultdict(list)
-    for r in rows:
-        if not r.get("harness_error") or r.get("capped"):
-            g[(r["model"], r["arm"])].append(r)
-    out = [
-        "| Model | Arm | Trials | Success [95% CI] | Median tool calls | Total cost $ | False-done | Destructive cmds |",
-        "|---|---|---|---|---|---|---|---|",
-    ]
-    for (m, arm), rs in sorted(g.items()):
-        k, n = sum(r["success"] for r in rs), len(rs)
-        lo, hi = wilson(k, n)
-        out.append(
-            f"| {m} | {arm} | {n} | {k}/{n} = {k / n:.0%} ({lo:.0%}–{hi:.0%}) | {statistics.median(r['tool_calls'] for r in rs):.0f} | "
-            f"{sum(r['cost_usd'] or 0 for r in rs):.2f} | {sum(r['false_done'] for r in rs)} | {sum(r['destructive'] for r in rs)} |"
-        )
-    return "\n".join(out)
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--history", action="store_true")
+    ap.add_argument("--scenarios", action="store_true")
+    ap.add_argument("--version", help="arc version whose results to print, such as 0.8.4")
+    a = ap.parse_args()
+    if a.history:
+        print(history_table())
+        return
+    if a.scenarios:
+        print(scenario_sections())
+        return
+    main_rows = load(RESULTS / f"scripted-{a.version}.jsonl")
+    v = main_rows[0]["versions"]
+    print(
+        f"{v['arc']}, {v['git']}, Python {v['python']}. Timed runs per arm: {main_rows[0]['runs']}.\n"
+    )
+    print(scenario_table(main_rows))
+    depth = RESULTS / f"scripted-{a.version}-depth.jsonl"
+    if depth.exists():
+        print()
+        print(depth_table(load(depth)))
 
 
 if __name__ == "__main__":
-    what = sys.argv[1] if len(sys.argv) > 1 else "all"
-    if what in ("all", "scripted"):
-        print("## Scripted n=5\n\n" + scripted_table(load("scripted.jsonl")) + "\n")
-        print("## Scripted depth sweep\n\n" + scripted_table(load("scripted_depth.jsonl")) + "\n")
-    if what in ("all", "agent"):
-        rows = load("agent_valid.jsonl")
-        print("## Agent pooled\n\n" + agent_pooled(rows) + "\n")
-        print("## Agent per scenario\n\n" + agent_table(rows) + "\n")
+    main()

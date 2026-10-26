@@ -91,7 +91,7 @@ arc bottom                # jump to the bottommost branch
 arc drop feat/api
 ```
 
-Removes `feat/api` from the stack, rebases `feat/ui` onto `feat/auth`, and deletes the local branch. Prompts for confirmation unless `-f` is passed.
+Removes `feat/api` from the stack and rebases `feat/ui` onto `feat/auth`, cutting `feat/api`'s commits out of it. The local `feat/api` branch stays, so you can delete it yourself when you no longer need it. Prompts for confirmation unless `-f` is passed.
 
 ```bash
 arc drop feat/api -f       # skip confirmation

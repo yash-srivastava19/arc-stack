@@ -26,7 +26,7 @@ from lib import (
 from scenarios import SCENARIOS
 
 CLAUDE = shutil.which("claude") or "claude"
-ARC_DOC = (Path(__file__).resolve().parents[3] / "skills" / "arc.md").read_text()
+ARC_DOC = (BENCH.parent / "skills" / "arc.md").read_text()
 MAX_CALLS = 40
 TIMEOUT_S = 900
 HOME = Path.home()

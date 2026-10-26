@@ -14,6 +14,8 @@ BENCH = Path(__file__).resolve().parent
 # Trials live outside the repo so nested git repos never land in the working tree.
 TRIALS = Path(os.environ.get("BENCH_TRIALS", tempfile.gettempdir())) / "arc-bench-trials"
 DATE = "2026-01-01T00:00:00Z"
+# The arc under test. Point BENCH_VENV at another venv to benchmark a different arc version.
+VENV = Path(os.environ.get("BENCH_VENV", BENCH / ".venv"))
 
 
 def make_env(arm: str, extra: dict | None = None) -> dict:
@@ -25,7 +27,7 @@ def make_env(arm: str, extra: dict | None = None) -> dict:
     }
     path = [str(BENCH / "bin")]
     if arm == "arc":
-        path.append(str(BENCH / ".venv" / "bin"))
+        path.append(str(VENV / "bin"))
     path += ["/usr/local/bin", "/usr/bin", "/bin"]
     env.update(
         PATH=":".join(path),
@@ -161,7 +163,6 @@ def arc_adopt(work: Path, env, branches: list[str]) -> None:
     sh(["arc", "--no-input", "init", "--base", "main", "-q"], work, env)
     for b in branches:
         sh(["arc", "--no-input", "add", b, "-q"], work, env)
-    sh(["seed-arc-cache"], work, env)
 
 
 # ---------------------------------------------------------------- expected state

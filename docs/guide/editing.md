@@ -17,10 +17,10 @@ arc edit
 
 `arc edit` amends the current branch's HEAD commit, then runs a cascade rebase through all branches above it — with the same pause-and-resume conflict safety as `arc sync`.
 
-When done, push and update PRs:
+`arc edit` force-pushes the branches it changed. When done, update the PRs:
 
 ```bash
-arc push && arc submit
+arc submit
 ```
 
 ### Specify a branch
@@ -36,9 +36,10 @@ arc edit feat/auth     # no need to check it out first
 1. Stages any changes in the index (you still need to `git add` first)
 2. Runs `git commit --amend --no-edit` on the target branch
 3. Cascade-rebases every branch above the target
-4. Reports the result
+4. Force-pushes the target and every branch above it
+5. Reports the result
 
-It does **not** force-push. Run `arc push` after to update remote.
+To skip the push, pass `--no-push`, then run `arc push` when you're ready.
 
 ---
 

@@ -17,6 +17,7 @@ from pathlib import Path
 
 from lib import (
     BENCH,
+    VENV,
     expected_from_spec,
     failed_checks,
     make_env,
@@ -68,7 +69,7 @@ def run_once(sc, arm, n, trace=False, lines=None):
 def versions():
     run = lambda *a: subprocess.run(a, capture_output=True, text=True).stdout.strip()  # noqa: E731
     return {
-        "arc": run(str(BENCH / ".venv" / "bin" / "arc"), "--version"),
+        "arc": run(str(VENV / "bin" / "arc"), "--version"),
         "git": run("git", "--version"),
         "python": platform.python_version(),
         "os": platform.platform(),
@@ -90,7 +91,7 @@ def main():
             for sid in a.scenarios.split(","):
                 sc = SCENARIOS[sid]
                 arms = ["arc", "git"] if sc.arc else ["git"]
-                row: dict = {"scenario": sid, "title": sc.title, "n": n, "runs": a.runs, **meta}
+                row: dict = {"scenario": sid, "title": sc.title, "n": n, "runs": a.runs, "versions": meta}
                 if not sc.arc:
                     row["arc"] = {"unsupported": True}
                 first = {arm: run_once(sc, arm, n, trace=True) for arm in arms}
