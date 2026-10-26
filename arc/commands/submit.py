@@ -411,6 +411,7 @@ def land_cmd(ctx, branch, force, dry_run, keep_branch, quiet, output_json, skip_
             sys.exit(1)
         if sys.stdin.isatty():
             click.confirm(f"Delete local branch {target!r}?", abort=True)
+    _shared.exit_if_uncommitted(root, f"land {target} -f")
 
     with _shared.with_error_hint(root):
         land_branch(

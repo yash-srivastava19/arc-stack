@@ -111,6 +111,37 @@ def fast_forward(root: Path, branch: str, remote: str = "origin") -> bool:
     return True
 
 
+def fast_forward_all(root: Path, branches: list[str], remote: str = "origin") -> None:
+    """fast_forward each branch whose tip differs from its `remote` counterpart.
+
+    One `for-each-ref` read keeps the common case, where nothing moved, to one process.
+    """
+    result = _run(
+        [
+            "git",
+            "for-each-ref",
+            "--format=%(refname) %(objectname)",
+            "refs/heads",
+            f"refs/remotes/{remote}",
+        ],
+        cwd=root,
+        check=False,
+    )
+    if result.returncode != 0:
+        return
+    tips = dict(line.split() for line in result.stdout.splitlines())
+    for branch in branches:
+        remote_tip = tips.get(f"refs/remotes/{remote}/{branch}")
+        if remote_tip and remote_tip != tips.get(f"refs/heads/{branch}"):
+            fast_forward(root, branch, remote)
+
+
+def uncommitted_files(root: Path) -> list[str]:
+    """Tracked files with staged or unstaged changes."""
+    result = _run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=root, check=False)
+    return [line[3:] for line in result.stdout.splitlines()] if result.returncode == 0 else []
+
+
 def remote_ahead_count(base: str, remote: str = "origin") -> int:
     """Commits origin/<base> is ahead of local <base>. 0 if the remote-tracking ref
     is missing or local is already up to date — never raises."""
@@ -154,7 +185,11 @@ def rebase_abort() -> None:
 
 
 def force_push(branches: list[str], remote: str = "origin") -> None:
-    _run(["git", "push", "--force-with-lease", "--atomic", remote] + branches)
+    # --force-if-includes: a fetch moves the lease, so also require that the remote
+    # tip was once part of the local branch. Otherwise a teammate's commit is lost.
+    _run(
+        ["git", "push", "--force-with-lease", "--force-if-includes", "--atomic", remote] + branches
+    )
 
 
 def delete_branch(name: str, force: bool = False) -> None:
@@ -267,8 +302,37 @@ def changed_files_between(root: Path, from_ref: str, to_ref: str) -> list[str]:
     return [f for f in result.stdout.strip().splitlines() if f]
 
 
-def is_squash_merged(root: Path, branch: str, base: str) -> bool:
-    result = _run(["git", "cherry", "-v", base, branch], cwd=root, check=False)
-    if result.returncode != 0:
+def _cherry(root: Path, base: str, ref: str) -> list[str] | None:
+    """`git cherry` lines: "-" for a commit already on `base`, "+" for one that is not."""
+    result = _run(["git", "cherry", base, ref], cwd=root, check=False)
+    return result.stdout.splitlines() if result.returncode == 0 else None
+
+
+def _all_on_base(commits: list[str] | None) -> bool:
+    return commits is not None and all(line.startswith("-") for line in commits)
+
+
+def is_squash_merged(root: Path, branch: str, base: str, parent: str | None = None) -> bool:
+    """True when every commit of `branch`, or all of them squashed into one, is on `base`.
+
+    `parent` is the commit the branch's own work starts from (the branch below it in
+    the stack). It defaults to the merge base with `base`, which fits the bottom branch.
+    """
+    commits = _cherry(root, base, branch)
+    if commits is None:
         return False
-    return not any(line.startswith("+") for line in result.stdout.splitlines())
+    if _all_on_base(commits):
+        return True
+    if len(commits) == 1:
+        return False  # a squash of one commit has that commit's patch, checked above
+    if parent is None:
+        found = _run(["git", "merge-base", base, branch], cwd=root, check=False)
+        if found.returncode != 0:
+            return False
+        parent = found.stdout.strip()
+    squashed = _run(
+        ["git", "commit-tree", f"{branch}^{{tree}}", "-p", parent, "-m", "arc: squash check"],
+        cwd=root,
+        check=False,
+    )
+    return squashed.returncode == 0 and _all_on_base(_cherry(root, base, squashed.stdout.strip()))

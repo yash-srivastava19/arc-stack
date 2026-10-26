@@ -55,19 +55,25 @@ def _scan_squash_merged(
 ) -> tuple[set[str], StackState]:
     """Detect squash-merged branches, remove them locally, and return (removed, updated_data)."""
     squash_merged: set[str] = set()
+    below: str | None = None
     for b in data["branches"]:
         name = b["name"]
-        if git.branch_exists(name) and git.is_squash_merged(root, name, data["base"]):
+        if not git.branch_exists(name):
+            below = None
+            continue
+        if git.is_squash_merged(root, name, data["base"], below):
             squash_merged.add(name)
             if not quiet:
                 err.print(
                     f"↓ {name} detected as squash-merged into {data['base']} — removing from stack."
                 )
-            if not dry_run:
-                if git.current_branch() == name:
-                    git.checkout(data["base"])
-                git.delete_branch(name, force=True)
+        below = name
     if squash_merged and not dry_run:
+        # Delete after the scan: each branch's check starts from the branch below it.
+        for name in squash_merged:
+            if git.current_branch() == name:
+                git.checkout(data["base"])
+            git.delete_branch(name, force=True)
         data["branches"] = [b for b in data["branches"] if b["name"] not in squash_merged]
         st.save(root, data)
     return squash_merged, data
@@ -101,6 +107,8 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
         err.print("Stack is empty.")
         err.print("hint: run arc new <branch> to create your first branch", style="dim")
         return
+    if not dry_run:
+        _shared.exit_if_uncommitted(root, "sync")
 
     with _shared.with_error_hint(root):
         _shared.run_lifecycle_hook(
@@ -117,7 +125,7 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
             err.print("Fetching...", end=" ")
         if not dry_run:
             git.fetch()
-            git.fast_forward(root, data["base"])
+            git.fast_forward_all(root, [data["base"], *st.branch_names(data)])
             # Clear phantom mtime differences (e.g. uv.lock) that would cause
             # git rebase to refuse with "unstaged changes" even when nothing changed.
             git.refresh_index()
@@ -363,6 +371,7 @@ def rebase_cmd(upstack, downstack, do_continue, do_abort, dry_run, quiet):
                 err.print(f"\\[dry-run] rebase {step['branch']} onto {step['onto']}")
             return
 
+        _shared.exit_if_uncommitted(root, "rebase")
         result = cascade.run_cascade(plan, root, command="rebase", quiet=quiet)
         if result["state"] == "paused":
             files = result["conflicted_files"]

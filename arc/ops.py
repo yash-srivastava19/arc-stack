@@ -177,9 +177,9 @@ def filter_merged_before_push(
     _err = _Console(stderr=True)
     base = data.get("base", "main")
     safe: list[str] = []
-    for name in names:
+    for i, name in enumerate(names):
         root_path = _Path(root) if not hasattr(root, "is_dir") else root
-        if _git.is_squash_merged(root_path, name, base):
+        if _git.is_squash_merged(root_path, name, base, names[i - 1] if i else None):
             if not quiet and not output_json:
                 _err.print(
                     f"↓ {name!r} is already merged into {base!r} — skipping push",

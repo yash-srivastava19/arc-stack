@@ -71,7 +71,7 @@ pipx install arc-prs
 uv tool install arc-prs
 ```
 
-**Requires:** Python 3.11+, [git](https://git-scm.com), [gh CLI](https://cli.github.com) (authenticated via `gh auth login`)
+**Requires:** Python 3.11+, [git](https://git-scm.com) 2.30+, [gh CLI](https://cli.github.com) (authenticated via `gh auth login`)
 
 First time on a new machine:
 

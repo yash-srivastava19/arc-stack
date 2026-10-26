@@ -636,7 +636,7 @@ def test_push_skips_squash_merged_branches(tmp_path):
     _write_state_with_branches(tmp_path)
     runner = CliRunner()
 
-    def _is_squash_merged(_root, branch, _base):
+    def _is_squash_merged(_root, branch, _base, _parent=None):
         return branch == "feat/auth"
 
     with (
@@ -2258,7 +2258,7 @@ def test_sync_warns_on_predicted_conflicts(arc_root, monkeypatch):
     monkeypatch.setattr(_git, "fetch", lambda remote="origin": None)
     monkeypatch.setattr(_git, "current_branch", lambda: "feat/a")
     monkeypatch.setattr(_git, "branch_exists", lambda b: False)
-    monkeypatch.setattr(_git, "is_squash_merged", lambda root, branch, base: False)
+    monkeypatch.setattr(_git, "is_squash_merged", lambda root, branch, base, parent=None: False)
     monkeypatch.setattr(
         _c,
         "predict_conflicts",
@@ -2310,7 +2310,9 @@ def test_sync_detects_squash_merged_branch(arc_root, monkeypatch):
     )
     monkeypatch.setattr(_git, "fetch", lambda remote="origin": None)
     monkeypatch.setattr(_git, "current_branch", lambda: "feat/b")
-    monkeypatch.setattr(_git, "is_squash_merged", lambda root, branch, base: branch == "feat/a")
+    monkeypatch.setattr(
+        _git, "is_squash_merged", lambda root, branch, base, parent=None: branch == "feat/a"
+    )
     monkeypatch.setattr("arc.github.pr_is_merged", lambda n: False)
     monkeypatch.setattr(_git, "is_ancestor", lambda a, b: True)
     monkeypatch.setattr(_git, "rebase_fork_point", lambda onto: type("R", (), {"returncode": 0})())

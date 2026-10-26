@@ -10,7 +10,7 @@ import TabItem from '@theme/TabItem';
 ## Requirements
 
 - Python 3.11 or later
-- [git](https://git-scm.com)
+- [git](https://git-scm.com) 2.30 or later
 - [GitHub CLI](https://cli.github.com) — authenticated via `gh auth login`
 
 ---
