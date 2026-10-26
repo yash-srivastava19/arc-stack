@@ -605,7 +605,7 @@ SCENARIOS = {
             "Sync with uncommitted changes",
             s10_setup,
             lambda n: expect(n, trunk_extra=TRUNK_MOVED, wip={"f5.txt": "b5 wip\n"}),
-            SYNC_ARC,
+            lambda n: ["git stash -q", "arc sync -q", "arc push -q", "git stash pop -q"],
             s10_git,
             s10_prompt,
         ),
