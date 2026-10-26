@@ -57,7 +57,7 @@ def depth_table(rows: list[dict]) -> str:
         "| Scenario | Branches | Time ms: arc | Time ms: git | git processes: arc | git processes: git |",
         "|---|---|---|---|---|---|",
     ]
-    for r in sorted(rows, key=lambda r: (r["scenario"], r["n"])):
+    for r in sorted(rows, key=lambda r: (int(r["scenario"][1:].rstrip("abc")), r["n"])):
         a, g = r["arc"], r["git"]
         out.append(
             f"| {r['scenario']} | {r['n']} | {timing(a)} | {timing(g)} | {processes(a)} | {processes(g)} |"

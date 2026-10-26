@@ -359,6 +359,23 @@ arc sync -n && arc push -n && arc submit -n
 
 ---
 
+## Benchmarks
+
+arc is benchmarked against an expert using plain git on 16 everyday stacked-branch tasks, such as syncing after `main` moves, landing a squash-merged branch, keeping a teammate's push, and resolving a conflict mid-stack. A checker reads the repository afterwards and compares it with the expected end state, so a command that exits `0` with a wrong result fails.
+
+With arc 0.8.4 and a 5-branch stack:
+
+| | arc | expert git |
+|---|---|---|
+| Tasks with a correct result | 17 of 17 it has commands for | 18 of 18 |
+| Commands for a teammate's push to your branch | 2 | 6 |
+| Commands for a squash-merged bottom branch | 2 | 4 |
+| Time per task | 146–577 ms | 21–48 ms |
+
+arc is slower because each command starts Python (about 62 ms) and checks more state than a hand-typed git sequence. The method, every scenario's exact commands, and the full results are on the [Benchmarks](https://arc-pr-docs.netlify.app/benchmarks) page. The harness is in [`bench/`](bench/).
+
+---
+
 ## Reference
 
 All commands accept `-q` (`--quiet`) to suppress hints and `-n` (`--dry-run`) where the operation is destructive. `--json` is available on any command that produces data.

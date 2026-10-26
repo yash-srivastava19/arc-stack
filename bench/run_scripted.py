@@ -71,7 +71,7 @@ def versions():
     return {
         "arc": run(str(VENV / "bin" / "arc"), "--version"),
         "git": run("git", "--version"),
-        "python": platform.python_version(),
+        "python": run(str(VENV / "bin" / "python"), "-c", "import platform; print(platform.python_version())"),
         "os": platform.platform(),
         "cpu": platform.processor() or platform.machine(),
     }
