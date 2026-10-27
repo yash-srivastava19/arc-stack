@@ -41,7 +41,7 @@ arc dashboard --theme nord
 
 ## Status
 
-- Version: `0.8.3`
+- Version: `0.8.4`
 - Python: `3.11` to `3.13`
 - CI: GitHub Actions
 - Changelog: [CHANGELOG.md](https://github.com/yash-srivastava19/arc-stack/blob/main/CHANGELOG.md)
@@ -71,7 +71,7 @@ pipx install arc-prs
 uv tool install arc-prs
 ```
 
-**Requires:** Python 3.11+, [git](https://git-scm.com), [gh CLI](https://cli.github.com) (authenticated via `gh auth login`)
+**Requires:** Python 3.11+, [git](https://git-scm.com) 2.30+, [gh CLI](https://cli.github.com) (authenticated via `gh auth login`)
 
 First time on a new machine:
 

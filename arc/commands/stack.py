@@ -360,6 +360,7 @@ def drop_cmd(ctx, branch, force, dry_run, quiet, output_json):
         for step in plan:
             err.print(f"\\[dry-run] rebase {step['branch']} onto {step['onto']}")
         return
+    _shared.exit_if_uncommitted(root, f"drop {name} -f")
     with _shared.with_error_hint(root):
         result = cascade.run_cascade(plan, root, command="rebase", quiet=quiet)
         if result["state"] == "paused":

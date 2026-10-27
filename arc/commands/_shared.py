@@ -65,6 +65,20 @@ def _maybe_print_periodic_hint(root, quiet: bool = False) -> None:
         pass
 
 
+def exit_if_uncommitted(root, command: str) -> None:
+    """Stop before a restack starts: checking out each branch would fail on these changes."""
+    files = git.uncommitted_files(root)
+    if not files:
+        return
+    shown = ", ".join(files[:3]) + (f" and {len(files) - 3} more" if len(files) > 3 else "")
+    err.print(f"error: uncommitted changes in {shown}")
+    err.print(
+        f"hint: commit or stash them first: git stash && arc {command} && git stash pop",
+        style="dim",
+    )
+    sys.exit(1)
+
+
 def _maybe_print_error_hint(root) -> None:
     """Print non-blocking hint about arc report --bug after error."""
     try:
