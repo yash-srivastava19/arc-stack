@@ -84,7 +84,7 @@ def ctx(n, k=1):
     )
 
 
-SYNC_ARC = lambda n: ["arc sync -q", "arc push -q"]  # noqa: E731
+SYNC_ARC = lambda n: ["arc sync --push -q"]  # noqa: E731
 SYNC_GIT = lambda n: [  # noqa: E731
     "git fetch -q",
     "git rebase -q --update-refs origin/main",
@@ -605,7 +605,7 @@ SCENARIOS = {
             "Sync with uncommitted changes",
             s10_setup,
             lambda n: expect(n, trunk_extra=TRUNK_MOVED, wip={"f5.txt": "b5 wip\n"}),
-            lambda n: ["git stash -q", "arc sync -q", "arc push -q", "git stash pop -q"],
+            lambda n: ["git stash -q", "arc sync --push -q", "git stash pop -q"],
             s10_git,
             s10_prompt,
         ),

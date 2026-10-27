@@ -172,3 +172,33 @@ def test_restacking_commands_refuse_a_dirty_tree_before_moving_anything(
     assert "error:" in result.output and "hint:" in result.output
     assert _git(root, "for-each-ref", "--format=%(refname) %(objectname)", "refs/heads") == before
     assert (root / "b.txt").read_text() == "work in progress"
+
+
+@pytest.mark.git
+def test_sync_push_restacks_and_pushes_in_one_command(pushed_stack, monkeypatch):
+    root, other = pushed_stack
+    _commit(other, "upstream.txt", "new work on main")
+    _git(other, "push", "-q", "origin", "main")
+    monkeypatch.chdir(root)
+
+    result = CliRunner().invoke(cli, ["sync", "--push"])
+
+    assert result.exit_code == 0, result.output
+    _git(root, "fetch", "-q", "origin")
+    for branch in ("feat/a", "feat/b"):
+        assert _git(root, "rev-parse", branch) == _git(root, "rev-parse", f"origin/{branch}")
+    assert "upstream.txt" in _git(root, "ls-tree", "--name-only", "origin/feat/b").split()
+
+
+@pytest.mark.git
+def test_sync_push_does_not_push_a_stack_paused_on_a_conflict(pushed_stack, monkeypatch):
+    root, other = pushed_stack
+    _commit(other, "a.txt", "main's version")
+    _git(other, "push", "-q", "origin", "main")
+    before = _git(root, "ls-remote", "origin", "refs/heads/feat/*")
+    monkeypatch.chdir(root)
+
+    result = CliRunner().invoke(cli, ["sync", "--push"])
+
+    assert result.exit_code == 3, result.output
+    assert _git(root, "ls-remote", "origin", "refs/heads/feat/*") == before

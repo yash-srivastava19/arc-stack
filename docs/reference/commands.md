@@ -107,7 +107,7 @@ Shows the current stack: branch names, positions, commit counts, PR numbers and 
 ## arc sync
 
 ```
-arc sync [-n] [-q] [--json] [--skip-hooks]
+arc sync [-n] [-q] [--json] [--skip-hooks] [--push]
 ```
 
 Fetches from remote, then cascade-rebases the stack bottom-up. Fires `pre-sync` and `post-sync` hooks.
@@ -118,8 +118,9 @@ Fetches from remote, then cascade-rebases the stack bottom-up. Fires `pre-sync` 
 | `-q` | Quiet |
 | `--json` | Structured output |
 | `--skip-hooks` | Skip `pre-sync`/`post-sync` hooks |
+| `--push` | After a clean sync, push the stack as `arc push` does |
 
-If a conflict occurs, arc exits with code `3`. Resolve the conflict, then run `arc rebase --continue`. See [Syncing](../guide/syncing.md).
+If a conflict occurs, arc exits with code `3` and pushes nothing. Resolve the conflict, then run `arc rebase --continue` and `arc push`. See [Syncing](../guide/syncing.md).
 
 ---
 

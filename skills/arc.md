@@ -46,7 +46,7 @@ State is stored in `.arc/state.json` (gitignored). Configuration lives in `.arc/
 | `arc new BRANCH [-q]` | Create a new branch on top of the stack. |
 | `arc add BRANCH [-q]` | Adopt an existing local branch into the stack. |
 | `arc status [--json] [--plain] [-q]` | Show the stack with PR state and rebase status. |
-| `arc sync [-n] [--json] [-q]` | Fetch from remote and cascade-rebase the stack. |
+| `arc sync [-n] [--json] [-q] [--push]` | Fetch from remote and cascade-rebase the stack. `--push` also pushes it after a clean sync. |
 | `arc push [-n] [--json] [-q]` | Force-push all stack branches to remote. |
 | `arc submit [--draft] [--open] [--skip-hooks] [-n] [--json] [-q]` | Create or update PRs for the stack. |
 | `arc land [BRANCH] [-f] [-n] [--keep-branch] [--json] [-q]` | Land a merged PR and restack branches above it. |
@@ -256,8 +256,7 @@ arc status --json      # confirm pr_number is set on all branches
 ### Sync after trunk changes
 
 ```bash
-arc sync -q            # fetch + cascade-rebase
-arc push -q            # update remote
+arc sync --push -q     # fetch, cascade-rebase, and update remote
 arc submit -q          # update PR descriptions with new stack positions
 ```
 

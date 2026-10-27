@@ -91,7 +91,9 @@ def _prune_merged_branches(data: StackState, root, quiet: bool) -> StackState:
 @click.option("-q", "--quiet", is_flag=True)
 @click.option("--json", "output_json", is_flag=True)
 @click.option("--skip-hooks", is_flag=True)
-def sync_cmd(dry_run, quiet, output_json, skip_hooks):
+@click.option("--push", "then_push", is_flag=True, help="Push the stack after a clean sync.")
+@click.pass_context
+def sync_cmd(ctx, dry_run, quiet, output_json, skip_hooks, then_push):
     """Fetch and cascade-rebase the stack."""
     output_json = _shared._resolve_output_json(output_json)
     root = git.find_repo_root()
@@ -178,7 +180,9 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
             tip.sync_tip_branch(data)
 
         if not dry_run and not quiet:
-            err.print("Stack synced. Run 'arc push' to push to remote.")
+            err.print(
+                "Stack synced." if then_push else "Stack synced. Run 'arc push' to push to remote."
+            )
         if not dry_run:
             _shared.run_lifecycle_hook(
                 root,
@@ -189,7 +193,17 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                 output_json=output_json,
                 quiet=quiet,
             )
-            _shared._maybe_print_periodic_hint(root, quiet)
+            if then_push:
+                # One process for both steps: a second arc command would pay Python's startup again.
+                ctx.invoke(
+                    push_cmd,
+                    dry_run=False,
+                    quiet=quiet,
+                    output_json=output_json,
+                    skip_hooks=skip_hooks,
+                )
+            else:
+                _shared._maybe_print_periodic_hint(root, quiet)
 
 
 @click.command("push")
