@@ -184,7 +184,7 @@ def run_cascade(
             ),
             "exit_code": 3,
         }
-    pre_shas = {step["branch"]: git.get_sha(step["branch"]) for step in plan}
+    pre_shas = git.branch_shas([step["branch"] for step in plan])
     return _run_from(plan, root, command, plan, pre_shas, [], quiet)
 
 

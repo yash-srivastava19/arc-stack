@@ -54,20 +54,13 @@ def _scan_squash_merged(
     data: StackState, root, dry_run: bool, quiet: bool
 ) -> tuple[set[str], StackState]:
     """Detect squash-merged branches, remove them locally, and return (removed, updated_data)."""
-    squash_merged: set[str] = set()
-    below: str | None = None
-    for b in data["branches"]:
-        name = b["name"]
-        if not git.branch_exists(name):
-            below = None
-            continue
-        if git.is_squash_merged(root, name, data["base"], below):
-            squash_merged.add(name)
-            if not quiet:
+    squash_merged = git.merged_into(root, data["base"], st.branch_names(data))
+    if not quiet:
+        for name in st.branch_names(data):
+            if name in squash_merged:
                 err.print(
                     f"↓ {name} detected as squash-merged into {data['base']} — removing from stack."
                 )
-        below = name
     if squash_merged and not dry_run:
         # Delete after the scan: each branch's check starts from the branch below it.
         for name in squash_merged:
