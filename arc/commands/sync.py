@@ -266,8 +266,6 @@ def push_cmd(dry_run, quiet, output_json, skip_hooks):
 @click.option("-q", "--quiet", is_flag=True)
 def restack_cmd(branch: str | None, dry_run: bool, quiet: bool) -> None:
     """Restack a single branch onto its stack parent without full sync."""
-    if not _shared._check_setup():
-        sys.exit(6)
     root = git.find_repo_root()
     data = _shared._load_state_or_exit(root)
     target = branch or git.current_branch()

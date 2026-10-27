@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import click
 
-from arc import __version__
+import arc
 from arc.commands import ALL_COMMANDS
 from arc.commands._shared import err, out  # noqa: F401  (re-export: tests patch arc.cli.err.print)
 from arc.exceptions import ArcError
 
 CONTEXT_SETTINGS = {"help_option_names": ["-h", "--help"]}
+
+
+def _print_version(ctx: click.Context, _param: click.Parameter, value: bool) -> None:
+    if value and not ctx.resilient_parsing:
+        click.echo(f"arc, version {arc.__version__}")
+        ctx.exit()
 
 
 class ArcGroup(click.Group):
@@ -24,7 +30,14 @@ class ArcGroup(click.Group):
 
 
 @click.group(context_settings=CONTEXT_SETTINGS, cls=ArcGroup)
-@click.version_option(version=__version__, prog_name="arc")
+@click.option(
+    "--version",
+    is_flag=True,
+    expose_value=False,
+    is_eager=True,
+    callback=_print_version,
+    help="Show the version and exit.",
+)
 @click.option(
     "--no-color", is_flag=True, envvar="NO_COLOR", is_eager=True, help="Disable color output."
 )

@@ -98,7 +98,9 @@ def stack_status(
                 "pr_state": info.get("pr_state"),
                 "commits": commit_counts.get(name, 0),
                 "revision": b.get("revision", 0),
-                "needs_rebase": needs_rebase_flags.get(name, False),
+                # A merged branch is cleaned up by sync, never rebased.
+                "needs_rebase": needs_rebase_flags.get(name, False)
+                and not info.get("is_merged", False),
                 "is_current": name == current_branch,
                 "is_merged": info.get("is_merged", False),
             }

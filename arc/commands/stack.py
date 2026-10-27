@@ -14,6 +14,7 @@ from arc import state as st
 from arc.commands import _shared
 from arc.commands._shared import err, out
 from arc.commands.submit import land_branch
+from arc.commands.sync import _prune_merged_branches
 from arc.state import StackState
 
 _HOOKS_README = """\
@@ -85,8 +86,6 @@ def _scaffold_hooks_dir(root) -> None:
 @click.option("-q", "--quiet", is_flag=True)
 def init_cmd(base, prefix, quiet):
     """Initialize a stack in the current repo."""
-    if not _shared._check_setup():
-        sys.exit(6)
     root = git.find_repo_root()
     resolved_base = base or git.default_branch()
     data = st.init_state(base=resolved_base, prefix=prefix)
@@ -172,6 +171,8 @@ def add_cmd(branch, quiet):
         err.print(f"Branch {name!r} is already in the stack.")
         err.print("hint: run arc status to see the current stack", style="dim")
         sys.exit(1)
+    # Adopting on top of a merged branch would base the new branch's PR on dead work.
+    data = _prune_merged_branches(data, root, quiet)
     data = st.add_branch(data, name)
     st.save(root, data)
     tip.sync_tip_branch(data)
@@ -260,7 +261,7 @@ def status_cmd(output_json, plain, quiet):
                 "run 'arc sync' to fetch and rebase",
                 style="yellow",
             )
-        elif any(needs_rebase_flags.values()):
+        elif any(b["needs_rebase"] for b in status["branches"]):
             err.print(
                 "→ stack has drifted from its own branches — run 'arc rebase' to restack",
                 style="dim",
