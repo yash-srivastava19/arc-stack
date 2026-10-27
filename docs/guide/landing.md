@@ -4,6 +4,14 @@ Merge a PR and clean up the stack.
 
 ---
 
+## Merge PRs that arc linked as a stack
+
+When `arc submit` opens two or more PRs, it links them as a stack on GitHub. GitHub then merges them from the stack view on the pull request page. `gh pr merge` refuses a PR that belongs to a stack, with an error that names the asynchronous merge API.
+
+After the merge, run `arc sync` to remove the merged branches from the stack.
+
+---
+
 ## Land a merged PR
 
 Once a PR is merged on GitHub, remove it from the stack and restack the branches above it:

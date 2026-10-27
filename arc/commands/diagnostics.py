@@ -7,7 +7,8 @@ import sys
 
 import click
 
-from arc import __version__, git, github
+import arc
+from arc import git, github
 from arc.commands import _shared
 from arc.commands._shared import err, out
 
@@ -81,7 +82,7 @@ def doctor_cmd() -> None:
     if gh_ok:
         check("gh authenticated", github.is_authenticated(), "run gh auth login")
 
-    err.print(f"✓ arc version {__version__}", style="green")
+    err.print(f"✓ arc version {arc.__version__}", style="green")
 
     root = None
     try:
