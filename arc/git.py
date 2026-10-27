@@ -84,6 +84,36 @@ def commit_count(base: str, branch: str) -> int:
     return int(_run(["git", "rev-list", "--count", f"{base}..{branch}"]).stdout.strip())
 
 
+def stack_counts(base: str, branches: list[str]) -> tuple[dict[str, int], dict[str, bool]]:
+    """Commits above `base` for each branch, and whether each is behind the branch below it.
+
+    One `for-each-ref` call answers both for the whole stack. git older than 2.41 has no
+    %(ahead-behind:...), so arc then falls back to one rev-list and one merge-base per branch.
+    """
+    if not branches:
+        return {}, {}
+    parents = [base, *branches[:-1]]
+    fmt = "%(refname)" + "".join(f" %(ahead-behind:{p})" for p in parents)
+    result = _run(
+        ["git", "for-each-ref", f"--format={fmt}", *(f"refs/heads/{b}" for b in branches)],
+        check=False,
+    )
+    counts: dict[str, dict[str, tuple[int, int]]] = {}
+    if result.returncode == 0:
+        for line in result.stdout.splitlines():
+            ref, *nums = line.split()
+            pairs = zip(map(int, nums[0::2]), map(int, nums[1::2]))
+            counts[ref.removeprefix("refs/heads/")] = dict(zip(parents, pairs))
+    if counts.keys() != set(branches):
+        return (
+            {b: commit_count(base, b) for b in branches},
+            {b: not is_ancestor(p, b) for b, p in zip(branches, parents)},
+        )
+    ahead = {b: counts[b][base][0] for b in branches}
+    behind_parent = {b: counts[b][p][1] > 0 for b, p in zip(branches, parents)}
+    return ahead, behind_parent
+
+
 def is_ancestor(ancestor: str, descendant: str) -> bool:
     return (
         _run(["git", "merge-base", "--is-ancestor", ancestor, descendant], check=False).returncode
