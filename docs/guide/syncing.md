@@ -10,13 +10,32 @@ Keep the stack current when `main` moves or when you change a lower branch.
 arc sync
 ```
 
-Fetches from remote, then runs a cascade rebase bottom-up through the stack:
+Fetches from remote, then brings in what changed there:
+
+- Fast-forwards your local `main` to `origin/main`. If your local `main` has commits that aren't on origin, arc leaves it alone.
+- Fast-forwards any stack branch that a teammate pushed to, so their commits stay in your stack.
+- Removes branches whose changes are already in `main`, whether the PR was squash-merged, rebased, or merged with a merge commit.
+
+Then it runs a cascade rebase bottom-up through the stack:
 
 1. Rebase `feat/auth` onto the new tip of `main`
 2. Rebase `feat/api` onto `feat/auth`
 3. Rebase `feat/ui` onto `feat/api`
 
-If everything rebases cleanly, arc exits `0` and you're done.
+If everything rebases cleanly, arc exits `0`. Run `arc push` to update the remote.
+
+`arc push` refuses to overwrite a remote branch that has commits your local branch never had, such as a teammate's commit pushed after your last sync. Run `arc sync` again, then push.
+
+---
+
+## Uncommitted changes
+
+`arc sync`, `arc rebase`, `arc drop`, and `arc land` check out each branch they restack, so they stop before changing anything when you have uncommitted changes:
+
+```
+error: uncommitted changes in src/api.py
+hint: commit or stash them first: git stash && arc sync && git stash pop
+```
 
 ---
 

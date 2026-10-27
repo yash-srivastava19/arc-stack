@@ -41,6 +41,7 @@ const sidebars = {
         { type: 'doc', id: 'reference/json-output', label: 'JSON output' },
       ],
     },
+    { type: 'doc', id: 'benchmarks', label: 'Benchmarks' },
   ],
 };
 
