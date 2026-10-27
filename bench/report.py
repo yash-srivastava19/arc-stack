@@ -52,6 +52,14 @@ def scenario_table(rows: list[dict]) -> str:
     return "\n".join(out)
 
 
+def commands_table(rows: list[dict]) -> str:
+    out = ["| Task | arc commands | git commands | arc correct | git correct |", "|---|---|---|---|---|"]
+    for r in rows:
+        a, g = r["arc"], r["git"]
+        out.append(f"| {r['title']} | {commands(a)} | {commands(g)} | {verdict(a)} | {verdict(g)} |")
+    return "\n".join(out)
+
+
 def depth_table(rows: list[dict]) -> str:
     out = [
         "| Scenario | Branches | Time ms: arc | Time ms: git | git processes: arc | git processes: git |",
@@ -108,6 +116,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--history", action="store_true")
     ap.add_argument("--scenarios", action="store_true")
+    ap.add_argument("--commands", action="store_true", help="commands and correctness only")
     ap.add_argument("--version", help="arc version whose results to print, such as 0.8.4")
     a = ap.parse_args()
     if a.history:
@@ -117,6 +126,9 @@ def main():
         print(scenario_sections())
         return
     main_rows = load(RESULTS / f"scripted-{a.version}.jsonl")
+    if a.commands:
+        print(commands_table(main_rows))
+        return
     v = main_rows[0]["versions"]
     print(
         f"{v['arc']}, {v['git']}, Python {v['python']}. Timed runs per arm: {main_rows[0]['runs']}.\n"

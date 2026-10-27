@@ -361,18 +361,16 @@ arc sync -n && arc push -n && arc submit -n
 
 ## Benchmarks
 
-arc is benchmarked against an expert using plain git on 16 everyday stacked-branch tasks, such as syncing after `main` moves, landing a squash-merged branch, keeping a teammate's push, and resolving a conflict mid-stack. A checker reads the repository afterwards and compares it with the expected end state, so a command that exits `0` with a wrong result fails.
+Stacking is easy until something changes underneath you. We measured 16 everyday stacked-branch tasks, each done with arc and with the shortest correct sequence an experienced git user would type, and checked every result against the exact repository state it should produce.
 
-With arc 0.8.4 and a 5-branch stack:
-
-| | arc | expert git |
+| When this happens | arc | expert git |
 |---|---|---|
-| Tasks with a correct result | 17 of 17 it has commands for | 18 of 18 |
-| Commands for a teammate's push to your branch | 2 | 6 |
-| Commands for a squash-merged bottom branch | 2 | 4 |
-| Time per task | 146–577 ms | 21–48 ms |
+| `main` moved overnight | `arc sync`, `arc push` | 3 commands, with `--update-refs` and every branch named |
+| Your bottom PR was squash-merged | `arc sync`, `arc push` | 4 commands, with `rebase --onto` |
+| A teammate pushed to your branch | `arc sync`, `arc push` | 6 commands, and an easy way to overwrite their commit |
+| A reviewer wants a change mid-stack | `arc edit` | a fixup commit and an interactive rebase |
 
-arc is slower because each command starts Python (about 62 ms) and checks more state than a hand-typed git sequence. The method, every scenario's exact commands, and the full results are on the [Benchmarks](https://arc-pr-docs.netlify.app/benchmarks) page. The harness is in [`bench/`](bench/).
+arc got the right result in all 17 scenarios it has a command for. Each task takes arc 0.14 to 0.53 seconds, against 0.02 to 0.05 seconds for git, on an AWS `c7i.large`. The difference is Python's startup and the safety checks arc runs for you. The [Benchmarks](https://arc-pr-docs.netlify.app/benchmarks) page walks through each case, and [`bench/`](bench/) lets you rerun it.
 
 ---
 
