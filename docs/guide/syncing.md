@@ -7,7 +7,7 @@ Keep the stack current when `main` moves or when you change a lower branch.
 ## Fetch and rebase
 
 ```bash
-arc sync
+arc sync          # or: arc sync --push, to push the stack in the same command
 ```
 
 Fetches from remote, then brings in what changed there:

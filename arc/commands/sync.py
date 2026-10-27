@@ -54,20 +54,13 @@ def _scan_squash_merged(
     data: StackState, root, dry_run: bool, quiet: bool
 ) -> tuple[set[str], StackState]:
     """Detect squash-merged branches, remove them locally, and return (removed, updated_data)."""
-    squash_merged: set[str] = set()
-    below: str | None = None
-    for b in data["branches"]:
-        name = b["name"]
-        if not git.branch_exists(name):
-            below = None
-            continue
-        if git.is_squash_merged(root, name, data["base"], below):
-            squash_merged.add(name)
-            if not quiet:
+    squash_merged = git.merged_into(root, data["base"], st.branch_names(data))
+    if not quiet:
+        for name in st.branch_names(data):
+            if name in squash_merged:
                 err.print(
                     f"↓ {name} detected as squash-merged into {data['base']} — removing from stack."
                 )
-        below = name
     if squash_merged and not dry_run:
         # Delete after the scan: each branch's check starts from the branch below it.
         for name in squash_merged:
@@ -98,7 +91,9 @@ def _prune_merged_branches(data: StackState, root, quiet: bool) -> StackState:
 @click.option("-q", "--quiet", is_flag=True)
 @click.option("--json", "output_json", is_flag=True)
 @click.option("--skip-hooks", is_flag=True)
-def sync_cmd(dry_run, quiet, output_json, skip_hooks):
+@click.option("--push", "then_push", is_flag=True, help="Push the stack after a clean sync.")
+@click.pass_context
+def sync_cmd(ctx, dry_run, quiet, output_json, skip_hooks, then_push):
     """Fetch and cascade-rebase the stack."""
     output_json = _shared._resolve_output_json(output_json)
     root = git.find_repo_root()
@@ -185,7 +180,9 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
             tip.sync_tip_branch(data)
 
         if not dry_run and not quiet:
-            err.print("Stack synced. Run 'arc push' to push to remote.")
+            err.print(
+                "Stack synced." if then_push else "Stack synced. Run 'arc push' to push to remote."
+            )
         if not dry_run:
             _shared.run_lifecycle_hook(
                 root,
@@ -196,7 +193,17 @@ def sync_cmd(dry_run, quiet, output_json, skip_hooks):
                 output_json=output_json,
                 quiet=quiet,
             )
-            _shared._maybe_print_periodic_hint(root, quiet)
+            if then_push:
+                # One process for both steps: a second arc command would pay Python's startup again.
+                ctx.invoke(
+                    push_cmd,
+                    dry_run=False,
+                    quiet=quiet,
+                    output_json=output_json,
+                    skip_hooks=skip_hooks,
+                )
+            else:
+                _shared._maybe_print_periodic_hint(root, quiet)
 
 
 @click.command("push")

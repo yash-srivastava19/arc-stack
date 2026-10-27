@@ -226,14 +226,13 @@ def status_cmd(output_json, plain, quiet):
     names = st.branch_names(data)
 
     try:
-        commit_counts = {n: git.commit_count(data["base"], n) for n in names}
+        commit_counts, needs_rebase_flags = git.stack_counts(data["base"], names)
     except Exception:
         _shared._exit_json_error(
             f"base branch '{data['base']}' not found — run `arc init --base <branch>` to fix",
             exit_code=1,
             output_json=output_json,
         )
-    needs_rebase_flags = {n: not git.is_ancestor(ops.parent_branch(data, n), n) for n in names}
     pr_info = _gather_pr_info(data)
 
     status = ops.stack_status(data, current, commit_counts, pr_info, needs_rebase_flags)
@@ -471,7 +470,7 @@ def stack_snapshot_cmd(output_json: bool) -> None:
     names = st.branch_names(data)
 
     try:
-        commit_counts = {n: git.commit_count(data["base"], n) for n in names}
+        commit_counts, needs_rebase_flags = git.stack_counts(data["base"], names)
     except Exception:
         _shared._exit_json_error(
             f"base branch '{data['base']}' not found — run `arc init --base <branch>` to fix",
@@ -479,7 +478,6 @@ def stack_snapshot_cmd(output_json: bool) -> None:
             output_json=output_json,
         )
 
-    needs_rebase_flags = {n: not git.is_ancestor(ops.parent_branch(data, n), n) for n in names}
     pr_info = _gather_pr_info(data)
     status = ops.stack_status(data, current, commit_counts, pr_info, needs_rebase_flags)
 

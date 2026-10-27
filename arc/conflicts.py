@@ -13,14 +13,12 @@ def predict_conflicts(data: StackState, root: Path) -> list[dict]:
         return []
     base = data["base"]
     parents = [base] + branches[:-1]
+    own_files = [set(changed_files_between(root, p, b)) for p, b in zip(parents, branches)]
     results = []
     for i in range(1, len(branches)):
-        branch = branches[i]
-        parent = parents[i]
-        grandparent = parents[i - 1]
-        parent_files = set(changed_files_between(root, grandparent, parent))
-        branch_files = set(changed_files_between(root, parent, branch))
-        shared = parent_files & branch_files
+        shared = own_files[i - 1] & own_files[i]
         if shared:
-            results.append({"branch": branch, "parent": parent, "shared_files": sorted(shared)})
+            results.append(
+                {"branch": branches[i], "parent": parents[i], "shared_files": sorted(shared)}
+            )
     return results

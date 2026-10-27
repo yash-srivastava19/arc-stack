@@ -79,3 +79,44 @@ def test_status_does_not_ask_to_rebase_a_merged_branch():
 
     assert status["branches"][0]["needs_rebase"] is False
     assert "rebase" not in ops.next_step_hint(status)
+
+
+def _git_without_ahead_behind(monkeypatch):
+    """git before 2.41 rejects the %(ahead-behind:...) atom."""
+    import arc.git as git_mod
+
+    real = git_mod._run
+
+    def run(args, cwd=None, check=True):
+        if args[:2] == ["git", "for-each-ref"] and "ahead-behind" in " ".join(args):
+            return sp.CompletedProcess(args, 128, "", "fatal: unknown field name")
+        return real(args, cwd=cwd, check=check)
+
+    monkeypatch.setattr(git_mod, "_run", run)
+
+
+@pytest.mark.git
+@pytest.mark.parametrize("old_git", [False, True])
+def test_status_reports_commit_counts_and_stale_branches(stacked_repo, monkeypatch, old_git):
+    if old_git:
+        _git_without_ahead_behind(monkeypatch)
+    _git(stacked_repo, "checkout", "-q", "feat/auth")
+    (stacked_repo / "auth2.py").write_text("more")
+    _git(stacked_repo, "add", "auth2.py")
+    _git(stacked_repo, "commit", "-q", "-m", "more auth")
+    monkeypatch.chdir(stacked_repo)
+
+    result = CliRunner().invoke(cli, ["status", "--json"])
+
+    assert result.exit_code == 0, result.output
+    branches = {b["name"]: b for b in json.loads(result.output)["branches"]}
+    assert {n: b["commits"] for n, b in branches.items()} == {
+        "feat/auth": 2,
+        "feat/api": 2,
+        "feat/tests": 3,
+    }
+    assert {n: b["needs_rebase"] for n, b in branches.items()} == {
+        "feat/auth": False,
+        "feat/api": True,
+        "feat/tests": False,
+    }

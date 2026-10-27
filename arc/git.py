@@ -84,6 +84,67 @@ def commit_count(base: str, branch: str) -> int:
     return int(_run(["git", "rev-list", "--count", f"{base}..{branch}"]).stdout.strip())
 
 
+def _ahead_behind(
+    branches: list[str], bases: list[str], cwd: Path | None = None
+) -> dict[str, dict[str, tuple[int, int]]] | None:
+    """(ahead, behind) of each existing local branch against each base, in one git call.
+
+    Branches that don't exist are left out. Returns None when git can't answer: git
+    older than 2.41 has no %(ahead-behind:...).
+    """
+    fmt = "%(refname)" + "".join(f" %(ahead-behind:{b})" for b in bases)
+    result = _run(
+        ["git", "for-each-ref", f"--format={fmt}", *(f"refs/heads/{b}" for b in branches)],
+        cwd=cwd,
+        check=False,
+    )
+    if result.returncode != 0:
+        return None
+    counts = {}
+    for line in result.stdout.splitlines():
+        ref, *nums = line.split()
+        pairs = zip(map(int, nums[0::2]), map(int, nums[1::2]))
+        counts[ref.removeprefix("refs/heads/")] = dict(zip(bases, pairs))
+    return counts
+
+
+def branch_shas(branches: list[str]) -> dict[str, str]:
+    """Tip commit of each branch, read in one git call."""
+    result = _run(
+        [
+            "git",
+            "for-each-ref",
+            "--format=%(refname) %(objectname)",
+            *(f"refs/heads/{b}" for b in branches),
+        ],
+        check=False,
+    )
+    found = (
+        dict(line.split() for line in result.stdout.splitlines()) if result.returncode == 0 else {}
+    )
+    return {b: found.get(f"refs/heads/{b}") or get_sha(b) for b in branches}
+
+
+def stack_counts(base: str, branches: list[str]) -> tuple[dict[str, int], dict[str, bool]]:
+    """Commits above `base` for each branch, and whether each is behind the branch below it.
+
+    One git call answers both for the whole stack, with one rev-list and one merge-base
+    per branch as the fallback.
+    """
+    if not branches:
+        return {}, {}
+    parents = [base, *branches[:-1]]
+    counts = _ahead_behind(branches, parents)
+    if counts is None or counts.keys() != set(branches):
+        return (
+            {b: commit_count(base, b) for b in branches},
+            {b: not is_ancestor(p, b) for b, p in zip(branches, parents)},
+        )
+    ahead = {b: counts[b][base][0] for b in branches}
+    behind_parent = {b: counts[b][p][1] > 0 for b, p in zip(branches, parents)}
+    return ahead, behind_parent
+
+
 def is_ancestor(ancestor: str, descendant: str) -> bool:
     return (
         _run(["git", "merge-base", "--is-ancestor", ancestor, descendant], check=False).returncode
@@ -300,6 +361,27 @@ def changed_files_between(root: Path, from_ref: str, to_ref: str) -> list[str]:
     if result.returncode != 0:
         return []
     return [f for f in result.stdout.strip().splitlines() if f]
+
+
+def merged_into(root: Path, base: str, branches: list[str]) -> set[str]:
+    """Stack branches whose changes are already on `base`, through any kind of merge.
+
+    `branches` is in stack order, so each squash check starts from the branch below it.
+    A branch that already contains `base` and has commits of its own can't be merged,
+    so one batched call spares those branches the per-branch check.
+    """
+    counts = _ahead_behind(branches, [base], cwd=root)
+    merged: set[str] = set()
+    below: str | None = None
+    for name in branches:
+        if counts is not None and name not in counts:
+            below = None  # no such local branch
+            continue
+        on_top = counts is not None and counts[name][base][0] > 0 and counts[name][base][1] == 0
+        if not on_top and is_squash_merged(root, name, base, below):
+            merged.add(name)
+        below = name
+    return merged
 
 
 def _cherry(root: Path, base: str, ref: str) -> list[str] | None:
